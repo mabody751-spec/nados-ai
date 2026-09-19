@@ -13,7 +13,7 @@ import { providerCatalog, publicRuntimeProviders, removeRuntimeProvider, upsertR
 import { closeComputerSession, computerStatus, executeComputerStep, openComputerSession, planComputerStep } from './computer.mjs'
 import { capabilityReply, effectiveProviderMode, identityReply, isNadosCapabilityQuestion, isNadosIdentityQuestion, modeInstructions } from './instructions.mjs'
 import { availableModels, resolveModelSelection } from './models.mjs'
-import { getConversations, saveConversation, supabaseEnabled } from './supabaseStore.mjs'
+import { getConversations, getTrainingStats, saveConversation, saveTeacherOutput, saveTrainingExample, supabaseEnabled } from './supabaseStore.mjs'
 import { buildProviderRegistry, swarmLearn, newTrainingJob, TRAINING_PROVIDER_STATE } from './training/engine.mjs'
 import { callProvider } from './providers.mjs'
 
@@ -261,11 +261,16 @@ app.post('/api/training/generate', requireLocalOrigin, async (request, response)
     const { message, mode, instructions } = request.body || {}
     if (!message?.trim()) return response.status(400).json({ error: 'رسالة المهمة مطلوبة.' })
     const result = await swarmLearn({ callProvider, message, mode: mode || 'create', instructions: instructions || modeInstructions(mode || 'create', {}) })
+    const persistResults = await Promise.all([
+      ...(result.outputs || []).filter((item) => item.ok).map((item) => saveTeacherOutput({ ...item, message })),
+      result.best ? saveTrainingExample({ message, best: result.best, taskTypes: result.taskTypes }) : Promise.resolve(false),
+    ])
     response.json({
       status: result.status,
       reason: result.reason || null,
       taskTypes: result.taskTypes,
       teachers: result.teachers,
+      persisted: persistResults.filter(Boolean).length,
       best: result.best ? {
         teacher: result.best.teacherId,
         model: result.best.teacherModel,
@@ -290,6 +295,57 @@ app.post('/api/training/queue', requireLocalOrigin, (request, response) => {
   const job = newTrainingJob(request.body || {})
   response.status(202).json({ queued: true, job })
 })
+
+app.get('/api/training/stats', requireLocalOrigin, async (_request, response) => {
+  const supabase = await getTrainingStats()
+  response.json({
+    supabase,
+    trainingProvider: TRAINING_PROVIDER_STATE,
+    scheduler: { enabled: schedulerEnabled, intervalMs: schedulerIntervalMs, lastRunAt: schedulerLastRun, runs: schedulerRuns },
+  })
+})
+
+const trainingSeeds = [
+  'اشرح فوائد الاختبارات الآلية في هندسة البرمجيات بأسلوب مبسط.',
+  'اكتب دالة JavaScript تنظف مدخلات المستخدم من الوسوم الخطيرة.',
+  'قارن بين SQL وNoSQL مع أمثلة عملية قصيرة.',
+  'اكتب مكون React يعرض قائمة مهام مع إضافة وحذف.',
+  'اذكر خمس نصائح لتحسين أداء تطبيقات الويب.',
+  'اشرح الفرق بين Promise.all وPromise.allSettled بمثال.',
+  'اكتب استعلام SQL يجمع بيانات المبيعات حسب الشهر.',
+  'اشرح كيف تعمل طبقات الأمان في تطبيق حديث.',
+]
+
+let schedulerEnabled = String(process.env.NADOS_TRAINING_SCHEDULER || 'off').toLowerCase() === 'on'
+let schedulerIntervalMs = Math.max(60_000, Number(process.env.NADOS_TRAINING_INTERVAL_MS) || 600_000)
+let schedulerLastRun = null
+let schedulerRuns = 0
+let schedulerSeedIndex = 0
+
+async function runSchedulerCycle() {
+  try {
+    const message = trainingSeeds[schedulerSeedIndex % trainingSeeds.length]
+    schedulerSeedIndex += 1
+    const result = await swarmLearn({ callProvider, message, mode: 'create', instructions: modeInstructions('create', {}) })
+    const persistResults = await Promise.all([
+      ...(result.outputs || []).filter((item) => item.ok).map((item) => saveTeacherOutput({ ...item, message })),
+      result.best ? saveTrainingExample({ message, best: result.best, taskTypes: result.taskTypes }) : Promise.resolve(false),
+    ])
+    schedulerLastRun = new Date().toISOString()
+    schedulerRuns += 1
+    console.log(`[training-scheduler] cycle ${schedulerRuns}: ${result.status} | persisted ${persistResults.filter(Boolean).length}`)
+  } catch (error) {
+    schedulerLastRun = new Date().toISOString()
+    console.log(`[training-scheduler] cycle failed: ${String(error?.message || error).slice(0, 120)}`)
+  }
+}
+
+function startTrainingScheduler() {
+  if (!schedulerEnabled) return
+  const timer = setInterval(() => { void runSchedulerCycle() }, schedulerIntervalMs)
+  if (typeof timer.unref === 'function') timer.unref()
+  void runSchedulerCycle()
+}
 
 app.post('/api/providers/stats/reset', requireLocalOrigin, (request, response) => {
   const { id } = request.body
@@ -605,4 +661,5 @@ if (existsSync(dist)) {
 app.listen(port, '127.0.0.1', () => {
   const connected = providerStatuses().filter((item) => item.configured).map((item) => item.name)
   console.log(`Nados AI server listening on http://127.0.0.1:${port} (${connected.join(', ') || 'demo mode'})`)
+  startTrainingScheduler()
 })
