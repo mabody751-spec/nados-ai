@@ -1,6 +1,6 @@
 import type { ModelId, SearchMode } from './api'
 
-export type View = 'home' | 'chat' | 'discover' | 'library' | 'spaces' | 'studio' | 'computer' | 'connectors'
+export type View = 'home' | 'chat' | 'discover' | 'library' | 'spaces' | 'studio' | 'computer' | 'connectors' | 'training'
 
 export interface HistoryItem {
   id: string

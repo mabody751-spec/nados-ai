@@ -143,6 +143,51 @@ export async function removeManagedProvider(id: string) {
   if (!response.ok) throw new Error(await readError(response, 'تعذّر فصل المزوّد.'))
 }
 
+export interface TrainingTeacher {
+  id: string
+  name: string
+  kind: string
+  model: string
+  capabilities: { contextWindow: number; maxOutput: number; longContext: boolean; reasoning: boolean; coding: boolean; vision: boolean; metered: boolean }
+}
+
+export interface TrainingCenterData {
+  providers: TrainingTeacher[]
+  trainingProvider: string
+  supabase: { enabled: boolean; outputsTotal?: number; outputsAccepted?: number; examplesTotal?: number }
+  scheduler: { enabled: boolean; intervalMs: number; lastRunAt: string | null; runs: number }
+  usage: Record<string, { totalCalls: number; successCalls: number; failedCalls: number; errorRate: number; avgLatencyMs: number }> | null
+}
+
+export async function getTrainingCenter(): Promise<TrainingCenterData | null> {
+  try {
+    const [registryRes, statsRes, usageRes] = await Promise.all([
+      fetch('/api/training/registry', { signal: AbortSignal.timeout(8000) }),
+      fetch('/api/training/stats', { signal: AbortSignal.timeout(8000) }),
+      fetch('/api/providers/stats', { signal: AbortSignal.timeout(8000) }),
+    ])
+    if (!registryRes.ok || !statsRes.ok) return null
+    const registry = await registryRes.json() as { providers: TrainingTeacher[]; trainingProvider: string }
+    const stats = await statsRes.json() as { supabase: TrainingCenterData['supabase']; scheduler: TrainingCenterData['scheduler'] }
+    const usage = usageRes.ok ? ((await usageRes.json() as { stats?: TrainingCenterData['usage'] }).stats || null) : null
+    return {
+      providers: registry.providers || [],
+      trainingProvider: registry.trainingProvider,
+      supabase: stats.supabase || { enabled: false },
+      scheduler: stats.scheduler || { enabled: false, intervalMs: 0, lastRunAt: null, runs: 0 },
+      usage,
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function generateTrainingData(message: string) {
+  const response = await fetch('/api/training/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, mode: 'create' }) })
+  if (!response.ok) throw new Error(await readError(response, 'فشل توليد بيانات التدريب.'))
+  return await response.json() as { status: string; reason: string | null; teachers: string[]; persisted: number; best: { teacher: string; qualityScore: number; agreementScore: number | null; preview: string } | null; outputs: Array<{ teacher: string; ok: boolean; qualityScore: number | null; accepted: boolean; error: string | null }> }
+}
+
 const emptyFeatures = {
   chat: false,
   webSearch: false,

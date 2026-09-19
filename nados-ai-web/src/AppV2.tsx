@@ -6,6 +6,7 @@ import {
   BookOpen,
   Bookmark,
   Boxes,
+  BrainCircuit,
   Check,
   ChevronDown,
   ChevronUp,
@@ -41,6 +42,7 @@ import {
 import { askNados, formatTokens, getNadosCapabilities, getNadosModels, synthesizeNadosSpeech, type ApiCapabilities, type ChatReply, type ConversationMessage, type ModelId, type NadosModelOption, type SearchMode } from './api'
 import { Composer, modeData } from './Composer'
 import { ComputerView, ConnectorsView, DiscoverView, LibraryView, SettingsPanel, SpacesView, StudioView, VoiceDialog } from './FeatureViews'
+import { TrainingCenter } from './TrainingCenter'
 import { initialHistory, initialSpaces, type AppSettings, type HistoryItem, type Space, type View } from './types'
 import { countWords, MAX_CONVERSATION_CHARS, MAX_CONVERSATION_WORDS, MAX_MESSAGE_CHARS, MAX_MESSAGE_WORDS } from './limits'
 import { RichAnswer } from './RichAnswer'
@@ -699,7 +701,7 @@ function AppV2() {
     setSelectedFiles((current) => current.length >= 5 ? current : [...current, file])
     setToast('أُرفق الملف')
   } }
-  const viewTitles: Partial<Record<View, string>> = { chat: 'محادثة', discover: 'استكشف', library: 'المكتبة', spaces: 'المساحات', studio: 'إنشاء الصور', computer: 'التحكم بالكمبيوتر', connectors: 'التطبيقات المتصلة' }
+  const viewTitles: Partial<Record<View, string>> = { chat: 'محادثة', discover: 'استكشف', library: 'المكتبة', spaces: 'المساحات', studio: 'إنشاء الصور', computer: 'التحكم بالكمبيوتر', connectors: 'التطبيقات المتصلة', training: 'مركز التدريب' }
 
   return (
     <div className="app-shell">
@@ -714,6 +716,7 @@ function AppV2() {
           <button className={view === 'studio' ? 'active' : ''} onClick={() => navigate('studio')}><ImageIcon size={18} /><span>إنشاء الصور</span></button>
           <button className={view === 'computer' ? 'active' : ''} onClick={() => navigate('computer')}><MonitorCog size={18} /><span>الكمبيوتر</span></button>
           <button className={view === 'connectors' ? 'active' : ''} onClick={() => navigate('connectors')}><PlugZap size={18} /><span>التطبيقات المتصلة</span></button>
+          {['localhost', '127.0.0.1', '::1'].includes(window.location.hostname) && <button className={view === 'training' ? 'active' : ''} onClick={() => navigate('training')}><BrainCircuit size={18} /><span>مركز التدريب</span></button>}
         </nav>
         <div className="recent"><div className="section-label"><span>الجلسات</span><small>{sessions.length}</small></div>
           {sessions.length > 3 && (
@@ -842,6 +845,7 @@ function AppV2() {
         )}
 
         {view === 'discover' && <DiscoverView onAsk={submit} />}
+        {view === 'training' && <TrainingCenter />}
         {view === 'library' && <LibraryView history={history} spaces={spaces} onOpen={openCurrentSession} />}
         {view === 'spaces' && <SpacesView spaces={spaces} setSpaces={setSpaces} onAsk={submit} />}
         {view === 'studio' && <StudioView connected={capabilities.features.images} />}

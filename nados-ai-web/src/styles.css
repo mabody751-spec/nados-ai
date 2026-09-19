@@ -1627,6 +1627,52 @@ kbd { border: 1px solid #454d46; border-radius: 4px; color: #8f9891; padding: 2p
 .is-search-hit { outline: 2px solid var(--accent, #10a37f); outline-offset: 4px; border-radius: 14px; }
 .user-question-wrap.is-search-hit { border-radius: 14px; }
 
+.training-center { max-width: 980px; margin: 0 auto; padding: 24px 16px 40px; }
+.training-hero { display: flex; align-items: center; gap: 12px; padding: 0 0 18px; color: var(--mint); }
+.training-hero h2 { margin: 0; font-size: 17px; color: var(--ink); direction: ltr; text-align: left; }
+.training-hero p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.training-hero-actions { margin-right: auto; display: flex; gap: 6px; align-items: center; }
+.training-run { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 14px; border: 0; border-radius: 10px; background: var(--mint); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.training-run:disabled { opacity: .55; cursor: wait; }
+.training-run:hover:not(:disabled) { background: var(--mint-dark); }
+.training-alert { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-radius: 12px; background: rgb(var(--amber-rgb) / 0.12); color: var(--amber); font-size: 13px; margin-bottom: 16px; }
+.training-result { padding: 13px 15px; border-radius: 12px; background: var(--panel-soft); margin-bottom: 16px; display: grid; gap: 6px; }
+.training-result > strong { font-size: 13px; }
+.training-result > span { font-size: 12px; color: var(--muted); }
+.training-result-teachers { display: flex; flex-wrap: wrap; gap: 6px; }
+.training-result-teachers span { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 4px 9px; border-radius: 999px; }
+.training-result-teachers .accepted { background: var(--soft-mint); color: var(--mint-dark); }
+:root[data-theme='dark'] .training-result-teachers .accepted { color: var(--mint); }
+.training-result-teachers .rejected { background: rgb(var(--amber-rgb) / 0.10); color: var(--amber); }
+.training-result-teachers .failed { background: rgb(var(--coral-rgb) / 0.10); color: var(--coral); }
+.training-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.training-card { padding: 15px 16px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); }
+.training-card h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 13.5px; color: var(--ink); }
+.training-teachers { display: grid; gap: 10px; max-height: 340px; overflow-y: auto; }
+.training-teacher { display: grid; gap: 4px; padding: 9px 11px; border-radius: 10px; background: var(--panel-soft); }
+.training-teacher strong { font-size: 12.5px; }
+.training-teacher small { font-size: 11px; color: var(--muted); direction: ltr; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.teacher-caps { display: flex; flex-wrap: wrap; gap: 4px; }
+.teacher-caps span { font-size: 10px; padding: 2px 7px; border-radius: 999px; background: var(--soft-blue); color: var(--blue); }
+:root[data-theme='dark'] .teacher-caps span { color: #8fb3e8; }
+.teacher-caps .ctx { background: var(--soft-mint); color: var(--mint-dark); }
+:root[data-theme='dark'] .teacher-caps .ctx { color: var(--mint); }
+.training-usage { display: grid; gap: 9px; max-height: 340px; overflow-y: auto; }
+.training-usage > div { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--panel-soft); }
+.training-usage strong { font-size: 12px; }
+.training-usage span { font-size: 11px; color: var(--muted); }
+.training-dataset { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.training-dataset > div { display: grid; gap: 3px; padding: 12px 10px; border-radius: 10px; background: var(--panel-soft); text-align: center; }
+.training-dataset strong { font-size: 20px; color: var(--ink); direction: ltr; }
+.training-dataset span { font-size: 10.5px; color: var(--muted); }
+.training-status { display: grid; gap: 10px; }
+.training-status > div { display: grid; gap: 2px; padding: 9px 11px; border-radius: 10px; background: var(--panel-soft); }
+.training-status span { font-size: 10.5px; color: var(--muted); }
+.training-status strong { font-size: 12.5px; }
+.training-status strong.pending { color: var(--amber); }
+.training-status small { font-size: 10.5px; color: var(--muted); }
+.training-note { font-size: 12.5px; color: var(--muted); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
