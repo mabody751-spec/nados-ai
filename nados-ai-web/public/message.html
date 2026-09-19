@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TechStore - متجر الإلكترونيات</title>
+<style>
+/* إعدادات عامة */
+:root {
+--primary-color: #007bff;
+--secondary-color: #28a745;
+--dark-bg: #1a1a2e;
+--light-bg: #f5f5f5;
+--text-color: #333;
+--white: #fff;
+--shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+--transition: all 0.3s ease;
+}
+
+* {
+margin: 0;
+padding: 0;
+box-sizing: border-box;
+font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+background-color: var(--light-bg);
+color: var(--text-color);
+overflow-x: hidden;
+}
+
+/* الهيدر */
+header {
+background-color: var(--dark-bg);
+color: var(--white);
+padding: 1rem 5%;
+display: flex;
+justify-content: space-between;
+align-items: center;
+position: sticky;
+top: 0;
+z-index: 1000;
+box-shadow: var(--shadow);
+animation: slideDown 0.8s ease-out;
+}
+
+.logo {
+font-size: 1.5rem;
+font-weight: bold;
+color: var(--primary-color);
+}
+
+nav ul {
+list-style: none;
+display: flex;
+gap: 1.5rem;
+}
+
+nav a {
+color: var(--white);
+text-decoration: none;
+transition: var(--transition);
+position: relative;
+}
+
+nav a::after {
+content: '';
+position: absolute;
+bottom: -5px;
+right: 0;
+width: 0;
+height: 2px;
+background-color: var(--primary-color);
+transition: var(--transition);
+}
+
+nav a:hover::after {
+width: 100%;
+}
+
+/* القسم الرئيسي (Hero) */
+.hero {
+min-height: 80vh;
+background: linear-gradient(135deg, var(--dark-bg) 0%, #16213e 100%);
+display: grid;
+grid-template-columns: 1.2fr 0.8fr;
+align-items: center;
+gap: 2rem;
+color: var(--white);
+padding: 4rem 5% 3rem;
+position: relative;
+overflow: hidden;
+}
+
+.hero::before {
+content: '';
+position: absolute;
+inset: 0;
+background: radial-gradient(circle at top left, rgba(0, 123, 255, 0.28), transparent 32%), radial-gradient(circle at bottom right, rgba(40, 167, 69, 0.18), transparent 28%);
+}
+
+.hero-content,
+.hero-visual {
+position: relative;
+z-index: 1;
+}
+
+.hero-content {
+max-width: 700px;
+}
+
+.hero-badge {
+display: inline-flex;
+align-items: center;
+gap: 0.5rem;
+padding: 0.55rem 1rem;
+background: rgba(255, 255, 255, 0.08);
+border: 1px solid rgba(255,255,255,0.18);
+border-radius: 999px;
+font-size: 0.85rem;
+color: #dbeafe;
+margin-bottom: 1rem;
+animation: fadeInUp 1s ease-out 0.2s both;
+}
+
+.hero h1 {
+font-size: clamp(2.4rem, 4vw, 4rem);
+line-height: 1.1;
+margin-bottom: 1rem;
+animation: fadeInUp 1s ease-out 0.2s both;
+}
+
+.hero p {
+font-size: 1.1rem;
+line-height: 1.8;
+margin-bottom: 2rem;
+max-width: 600px;
+color: rgba(255,255,255,0.82);
+animation: fadeInUp 1s ease-out 0.4s both;
+}
+
+.hero-actions {
+display: flex;
+flex-wrap: wrap;
+gap: 1rem;
+margin-bottom: 2rem;
+animation: fadeInUp 1s ease-out 0.6s both;
+}
+
+.btn {
+padding: 0.85rem 1.9rem;
+background-color: var(--primary-color);
+color: var(--white);
+border: none;
+border-radius: 50px;
+font-size: 1rem;
+cursor: pointer;
+transition: var(--transition);
+}
+
+.btn:hover {
+background-color: #0056b3;
+transform: translateY(-3px);
+box-shadow: 0 10px 20px rgba(0, 123, 255, 0.3);
+}
+
+.btn.secondary {
+background: rgba(255,255,255,0.08);
+border: 1px solid rgba(255,255,255,0.18);
+}
+
+.btn.secondary:hover {
+background: rgba(255,255,255,0.12);
+}
+
+.hero-stats {
+display: flex;
+flex-wrap: wrap;
+gap: 1.2rem;
+animation: fadeInUp 1s ease-out 0.8s both;
+}
+
+.hero-stats div {
+min-width: 120px;
+padding: 0.8rem 1rem;
+background: rgba(255,255,255,0.04);
+border: 1px solid rgba(255,255,255,0.08);
+border-radius: 16px;
+}
+
+.hero-stats strong {
+display: block;
+font-size: 1.3rem;
+margin-bottom: 0.2rem;
+}
+
+.hero-stats span {
+font-size: 0.8rem;
+color: rgba(255,255,255,0.7);
+}
+
+.hero-visual {
+display: flex;
+justify-content: center;
+}
+
+.product-showcase {
+position: relative;
+width: min(100%, 420px);
+min-height: 420px;
+}
+
+.showcase-card {
+position: absolute;
+background: rgba(255,255,255,0.06);
+backdrop-filter: blur(8px);
+border: 1px solid rgba(255,255,255,0.12);
+border-radius: 24px;
+box-shadow: 0 18px 40px rgba(15, 23, 42, 0.38);
+}
+
+.showcase-card.main {
+top: 30px;
+right: 0;
+width: 280px;
+padding: 1rem;
+}
+
+.showcase-card.small {
+bottom: 20px;
+left: 0;
+width: 200px;
+padding: 0.9rem;
+}
+
+.showcase-card .showcase-image {
+height: 180px;
+border-radius: 18px;
+background: linear-gradient(135deg, #1d4ed8, #7c3aed);
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: 4rem;
+margin-bottom: 0.9rem;
+}
+
+.showcase-card.small .showcase-image {
+height: 120px;
+font-size: 2.5rem;
+background: linear-gradient(135deg, #0ea5e9, #22c55e);
+}
+
+.showcase-card h3 {
+font-size: 1rem;
+margin-bottom: 0.25rem;
+}
+
+.showcase-card p {
+font-size: 0.88rem;
+color: rgba(255,255,255,0.72);
+}
+
+.showcase-price {
+margin-top: 0.7rem;
+font-size: 1.15rem;
+font-weight: 700;
+color: #dbeafe;
+}
+
+.feature-strip {
+display: grid;
+grid-template-columns: repeat(4, minmax(0, 1fr));
+gap: 1rem;
+padding: 1.5rem 5% 0;
+margin-top: -1.2rem;
+position: relative;
+z-index: 2;
+}
+
+.feature-strip div {
+background: var(--white);
+border-radius: 18px;
+padding: 1rem 1.1rem;
+box-shadow: var(--shadow);
+display: flex;
+align-items: center;
+gap: 0.8rem;
+font-weight: 700;
+color: var(--dark-bg);
+}
+
+.feature-strip span {
+width: 42px;
+height: 42px;
+border-radius: 12px;
+display: inline-flex;
+align-items: center;
+justify-content: center;
+background: #e8f1ff;
+color: var(--primary-color);
+font-size: 1.2rem;
+}
+
+.feature-strip small {
+display: block;
+color: #667085;
+font-weight: 500;
+margin-top: 0.15rem;
+}
+
+/* قسم المنتجات */
+.products-section {
+padding: 4rem 5%;
+text-align: center;
+}
+
+.section-head {
+display: flex;
+align-items: end;
+justify-content: space-between;
+gap: 1rem;
+margin-bottom: 2.5rem;
+}
+
+.section-intro {
+text-align: right;
+}
+
+.section-intro span {
+display: inline-block;
+margin-bottom: 0.5rem;
+font-size: 0.85rem;
+color: var(--primary-color);
+font-weight: 700;
+letter-spacing: 0.05em;
+}
+
+.section-title {
+font-size: 2.5rem;
+margin-bottom: 0;
+color: var(--dark-bg);
+position: relative;
+display: inline-block;
+}
+
+.section-title::after {
+content: '';
+position: absolute;
+bottom: -10px;
+right: 50%;
+transform: translateX(50%);
+width: 50px;
+height: 4px;
+background-color: var(--primary-color);
+border-radius: 2px;
+}
+
+.btn-text {
+background: transparent;
+color: var(--primary-color);
+border: 1px solid rgba(0, 123, 255, 0.2);
+border-radius: 999px;
+padding: 0.75rem 1.1rem;
+font-weight: 700;
+cursor: pointer;
+}
+
+.product-grid {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+gap: 2rem;
+}
+
+.product-card {
+background-color: var(--white);
+border-radius: 18px;
+overflow: hidden;
+box-shadow: var(--shadow);
+transition: var(--transition);
+opacity: 0;
+transform: translateY(30px);
+position: relative;
+}
+
+.product-card.visible {
+opacity: 1;
+transform: translateY(0);
+}
+
+.product-card:hover {
+transform: translateY(-10px);
+box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
+}
+
+.product-badge {
+position: absolute;
+top: 1rem;
+right: 1rem;
+background: rgba(40, 167, 69, 0.15);
+color: #1a7f3f;
+border: 1px solid rgba(40, 167, 69, 0.25);
+font-size: 0.77rem;
+font-weight: 700;
+padding: 0.35rem 0.7rem;
+border-radius: 999px;
+}
+
+.product-image {
+height: 200px;
+background: linear-gradient(135deg, #edf4ff, #e9f9ef);
+display: flex;
+justify-content: center;
+align-items: center;
+font-size: 4rem;
+transition: var(--transition);
+}
+
+.product-card:hover .product-image {
+background: linear-gradient(135deg, #dbeafe, #dcfce7);
+}
+
+.product-info {
+padding: 1.5rem;
+text-align: right;
+}
+
+.product-title {
+font-size: 1.2rem;
+margin-bottom: 0.5rem;
+color: var(--dark-bg);
+}
+
+.product-meta {
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 1rem;
+margin-bottom: 1rem;
+}
+
+.product-price {
+font-size: 1.5rem;
+font-weight: bold;
+color: var(--secondary-color);
+}
+
+.product-rating {
+font-size: 0.85rem;
+color: #f59e0b;
+font-weight: 700;
+}
+
+.add-to-cart {
+width: 100%;
+padding: 0.8rem;
+background-color: var(--dark-bg);
+color: var(--white);
+border: none;
+border-radius: 10px;
+cursor: pointer;
+transition: var(--transition);
+}
+
+.add-to-cart:hover {
+background-color: var(--primary-color);
+}
+
+.offer-banner {
+margin: 0 5% 2rem;
+padding: 1.7rem 2rem;
+background: linear-gradient(135deg, #111827, #1e3a8a);
+border-radius: 24px;
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 1rem;
+color: var(--white);
+box-shadow: 0 18px 40px rgba(30, 58, 138, 0.25);
+}
+
+.offer-banner h3 {
+font-size: 1.7rem;
+margin-bottom: 0.2rem;
+}
+
+.offer-banner p {
+color: rgba(255,255,255,0.8);
+}
+
+.insights-section {
+padding: 0 5% 4rem;
+}
+
+.insights-grid {
+display: grid;
+grid-template-columns: repeat(3, minmax(0, 1fr));
+gap: 1.5rem;
+}
+
+.insight-card {
+background: var(--white);
+border-radius: 20px;
+padding: 1.5rem;
+box-shadow: var(--shadow);
+text-align: right;
+}
+
+.insight-card .icon {
+width: 48px;
+height: 48px;
+border-radius: 14px;
+background: #eaf2ff;
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: 1.35rem;
+margin-bottom: 1rem;
+}
+
+.insight-card h3 {
+font-size: 1.15rem;
+margin-bottom: 0.45rem;
+}
+
+.insight-card p {
+color: #667085;
+line-height: 1.8;
+}
+
+/* الفوتر */
+footer {
+background-color: var(--dark-bg);
+color: var(--white);
+text-align: center;
+padding: 2rem;
+margin-top: 2rem;
+}
+
+.footer-grid {
+display: grid;
+grid-template-columns: repeat(3, minmax(0, 1fr));
+gap: 2rem;
+text-align: right;
+max-width: 1100px;
+margin: 0 auto 1.5rem;
+}
+
+.footer-brand strong {
+font-size: 1.3rem;
+color: var(--primary-color);
+}
+
+.footer-grid h4 {
+margin-bottom: 0.8rem;
+font-size: 1rem;
+}
+
+.footer-grid ul {
+list-style: none;
+padding: 0;
+margin: 0;
+color: rgba(255,255,255,0.7);
+}
+
+.footer-grid li {
+margin-bottom: 0.5rem;
+}
+
+.copyright {
+border-top: 1px solid rgba(255,255,255,0.1);
+padding-top: 1rem;
+}
+
+/* الحركات (Keyframes) */
+@keyframes slideDown {
+from { transform: translateY(-100%); opacity: 0; }
+to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeInUp {
+from { opacity: 0; transform: translateY(20px); }
+to { opacity: 1; transform: translateY(0); }
+}
+
+/* استجابة الشاشات */
+@media (max-width: 768px) {
+.hero h1 { font-size: 2rem; }
+nav ul { display: none; } /* يمكن إضافة قائمة همبرغر هنا */
+}
+</style>
+</head>
+<body>
+
+<!-- الهيدر -->
+<header>
+<div class="logo">TechStore</div>
+<nav>
+<ul>
+<li><a href="#">الرئيسية</a></li>
+<li><a href="#products">المنتجات</a></li>
+<li><a href="#">من نحن</a></li>
+<li><a href="#">اتصل بنا</a></li>
+</ul>
+</nav>
+</header>
+
+<!-- القسم الرئيسي -->
+<section class="hero">
+<div class="hero-content">
+<div class="hero-badge">⚡ خصم لفترة محدودة • توصيل سريع داخل المدن الكبرى</div>
+<h1>أحدث الإلكترونيات بأسعار منافسة</h1>
+<p>اكتشف أحدث الهواتف، الحواسيب، والإكسسوارات التقنية من أفضل العلامات التجارية العالمية، مع تجربة شراء سهلة وآمنة.</p>
+<div class="hero-actions">
+<button class="btn" onclick="document.getElementById('products').scrollIntoView({behavior: 'smooth'})">تسوق الآن</button>
+<button class="btn secondary" onclick="document.getElementById('offers').scrollIntoView({behavior: 'smooth'})">اكتشف العروض</button>
+</div>
+<div class="hero-stats">
+<div><strong>15k+</strong><span>عميل راضي</span></div>
+<div><strong>2 يوم</strong><span>توصيل سريع</span></div>
+<div><strong>4.9/5</strong><span>تقييم المستخدمين</span></div>
+</div>
+</div>
+<div class="hero-visual">
+<div class="product-showcase">
+<div class="showcase-card main">
+<div class="showcase-image">📱</div>
+<h3>iPhone 16 Pro</h3>
+<p>بذاكرة 256GB • شحن سريع</p>
+<div class="showcase-price">4,299 ر.س</div>
+</div>
+<div class="showcase-card small">
+<div class="showcase-image">💻</div>
+<h3>Gaming Laptop</h3>
+<p>RTX 4060</p>
+<div class="showcase-price">6,200 ر.س</div>
+</div>
+</div>
+</div>
+</section>
+
+<section class="feature-strip">
+<div><span>🚚</span><div><strong>شحن مجاني</strong><small>على الطلبات فوق 300 ر.س</small></div></div>
+<div><span>🛡️</span><div><strong>ضمان أصلي</strong><small>مضمون على جميع المنتجات</small></div></div>
+<div><span>💳</span><div><strong>دفع آمن</strong><small>بطاقات وفوترات متنوعة</small></div></div>
+<div><span>🔄</span><div><strong>استرجاع سهل</strong><small>خلال 7 أيام</small></div></div>
+</section>
+
+<!-- قسم المنتجات -->
+<section class="products-section" id="products">
+<div class="section-head">
+<div class="section-intro">
+<span>منتجات مختارة</span>
+<h2 class="section-title">منتجاتنا المميزة</h2>
+</div>
+<button class="btn-text">عرض كل المنتجات</button>
+</div>
+<div class="product-grid">
+<!-- المنتج 1 -->
+<div class="product-card">
+<div class="product-badge">الأكثر طلباً</div>
+<div class="product-image">📱</div>
+<div class="product-info">
+<h3 class="product-title">هاتف ذكي Pro Max</h3>
+<div class="product-meta">
+<p class="product-price">3,500 ر.س</p>
+<span class="product-rating">★ 4.9</span>
+</div>
+<button class="add-to-cart">أضف إلى السلة</button>
+</div>
+</div>
+<!-- المنتج 2 -->
+<div class="product-card">
+<div class="product-badge">عرض اليوم</div>
+<div class="product-image">💻</div>
+<div class="product-info">
+<h3 class="product-title">حاسوب محمول Gaming</h3>
+<div class="product-meta">
+<p class="product-price">6,200 ر.س</p>
+<span class="product-rating">★ 4.8</span>
+</div>
+<button class="add-to-cart">أضف إلى السلة</button>
+</div>
+</div>
+<!-- المنتج 3 -->
+<div class="product-card">
+<div class="product-badge">جديد</div>
+<div class="product-image">🎧</div>
+<div class="product-info">
+<h3 class="product-title">سماعات لاسلكية</h3>
+<div class="product-meta">
+<p class="product-price">450 ر.س</p>
+<span class="product-rating">★ 4.7</span>
+</div>
+<button class="add-to-cart">أضف إلى السلة</button>
+</div>
+</div>
+<!-- المنتج 4 -->
+<div class="product-card">
+<div class="product-badge">مميز</div>
+<div class="product-image">⌚️</div>
+<div class="product-info">
+<h3 class="product-title">ساعة ذكية Series 8</h3>
+<div class="product-meta">
+<p class="product-price">1,200 ر.س</p>
+<span class="product-rating">★ 4.9</span>
+</div>
+<button class="add-to-cart">أضف إلى السلة</button>
+</div>
+</div>
+</div>
+</section>
+
+<section class="offer-banner" id="offers">
+<div>
+<h3>تسوق الآن واستفد من خصم 20%</h3>
+<p>عند شراء أي جهاز جديد خلال هذا الأسبوع.</p>
+</div>
+<button class="btn secondary" onclick="document.getElementById('products').scrollIntoView({behavior: 'smooth'})">احصل على العرض</button>
+</section>
+
+<section class="insights-section">
+<div class="section-head">
+<div class="section-intro">
+<span>لماذا نحن؟</span>
+<h2 class="section-title">تجربة شراء فريدة</h2>
+</div>
+</div>
+<div class="insights-grid">
+<div class="insight-card">
+<div class="icon">📦</div>
+<h3>توصيل سريع</h3>
+<p>نوفر خدمة توصيل سريعة داخل المدن الكبرى مع متابعة الطلب لحظة بلحظة.</p>
+</div>
+<div class="insight-card">
+<div class="icon">💬</div>
+<h3>دعم عملاء متجاوب</h3>
+<p>فريقنا جاهز للإجابة على استفساراتك واستكمال عملية الشراء بسهولة.</p>
+</div>
+<div class="insight-card">
+<div class="icon">🎯</div>
+<h3>منتجات موثوقة</h3>
+<p>نختار أفضل المنتجات العالمية بعناية لضمان جودة عالية وتجربة مستخدم ممتازة.</p>
+</div>
+</div>
+</section>
+
+<!-- الفوتر -->
+<footer>
+<div class="footer-grid">
+<div class="footer-brand">
+<strong>TechStore</strong>
+<p>متجر إلكترونيات حديث يقدم أحدث المنتجات بأعلى جودة وخدمة مميزة.</p>
+</div>
+<div>
+<h4>روابط سريعة</h4>
+<ul>
+<li>الرئيسية</li>
+<li>المنتجات</li>
+<li>العروض</li>
+</ul>
+</div>
+<div>
+<h4>تواصل معنا</h4>
+<ul>
+<li>support@techstore.com</li>
+<li>966500000000+</li>
+<li>الرياض • جدة • الدمام</li>
+</ul>
+</div>
+</div>
+<p class="copyright">&copy; 2023 TechStore. جميع الحقوق محفوظة.</p>
+</footer>
+
+<script>
+// سكربت لإظهار المنتجات بحركة عند التمرير (Scroll Animation)
+const productCards = document.querySelectorAll('.product-card');
+
+const observerOptions = {
+root: null,
+rootMargin: '0px',
+threshold: 0.1 // يظهر عندما يظهر 10% من العنصر
+};
+
+const observer = new IntersectionObserver((entries, observer) => {
+entries.forEach(entry => {
+if (entry.isIntersecting) {
+entry.target.classList.add('visible');
+observer.unobserve(entry.target); // يتوقف عن المراقبة بعد الظهور
+}
+});
+}, observerOptions);
+
+productCards.forEach(card => {
+observer.observe(card);
+});
+
+// سكربت بسيط لزر "أضف إلى السلة"
+const addToCartButtons = document.querySelectorAll('.add-to-cart');
+addToCartButtons.forEach(button => {
+button.addEventListener('click', function() {
+const originalText = this.textContent;
+this.textContent = 'تمت الإضافة! ✓';
+this.style.backgroundColor = 'var(--secondary-color)';
+setTimeout(() => {
+this.textContent = originalText;
+this.style.backgroundColor = '';
+}, 2000);
+});
+});
+</script>
+</body>
+</html>

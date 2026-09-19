@@ -1,0 +1,13 @@
+[api] Nados AI server listening on http://127.0.0.1:8787 (NVIDIA NIM)
+[web] 
+[web]   [32m[1mVITE[22m v8.3.0[39m  [2mready in [0m[1m2001[22m[2m[0m ms[22m
+[web] 
+[web]   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m2000[22m/[39m
+[web] [2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[api] (node:4728) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+[api] (Use `node --trace-deprecation ...` to show where the warning was created)
+[web] [2m1:00:57 PM[22m [36m[1m[vite][22m[39m [32m.env changed, restarting server...[39m
+[web] [2m1:01:09 PM[22m [36m[1m[vite][22m[39m server restarted.
+[api] node server/index.mjs exited with code 4294967295
+--> Sending SIGTERM to other processes..
+[web] npx vite --port 2000 exited with code 1

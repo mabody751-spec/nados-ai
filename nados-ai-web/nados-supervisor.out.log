@@ -1,0 +1,37 @@
+[Nados supervisor] api running
+[Nados supervisor] web running
+
+  VITE v8.3.0  ready in 739 ms
+
+  ➜  Local:   http://127.0.0.1:5174/
+Nados AI server listening on http://127.0.0.1:8787 (Gemini API / AI Studio, Groq, True SOTA, True SOTA 2, Groq 2, Gemini AI Studio 2, Hugging Face Qwen, Hugging Face DeepSeek)
+6:55:02 PM [vite] (client) hmr update /src/AppV2.tsx, /src/FeatureViews.tsx
+6:55:02 PM [vite] (client) hmr update /src/AppV2.tsx
+6:55:02 PM [vite] (client) hmr update /src/Composer.tsx
+6:55:02 PM [vite] (client) hmr update /src/Composer.tsx
+6:55:02 PM [vite] (client) hmr update /src/FeatureViews.tsx
+6:55:02 PM [vite] (client) hmr invalidate /src/Composer.tsx Could not Fast Refresh ("modeData" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+6:55:02 PM [vite] (client) hmr update /src/AppV2.tsx
+[Nados supervisor] api running
+Nados AI server listening on http://127.0.0.1:8787 (Gemini API / AI Studio, Groq, True SOTA, True SOTA 2, Groq 2, Gemini AI Studio 2, Hugging Face Qwen, Hugging Face DeepSeek)
+[Nados supervisor] api running
+Nados AI server listening on http://127.0.0.1:8787 (Gemini API / AI Studio, Groq, True SOTA, True SOTA 2, Groq 2, Gemini AI Studio 2, Hugging Face Qwen, Hugging Face DeepSeek)
+7:54:41 PM [vite] (client) hmr update /src/AppV2.tsx
+7:54:41 PM [vite] (client) hmr update /src/styles.css
+[Nados supervisor] api running
+Nados AI server listening on http://127.0.0.1:8787 (Gemini API / AI Studio, Groq, True SOTA, True SOTA 2, Groq 2, Gemini AI Studio 2, Hugging Face Qwen, Hugging Face DeepSeek)
+8:16:04 PM [vite] (client) hmr update /src/AppV2.tsx, /src/FeatureViews.tsx
+8:16:04 PM [vite] (client) hmr update /src/AppV2.tsx
+8:16:32 PM [vite] (client) hmr update /src/Composer.tsx
+8:16:32 PM [vite] (client) hmr invalidate /src/Composer.tsx Could not Fast Refresh ("modeData" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+8:16:32 PM [vite] (client) hmr update /src/AppV2.tsx
+8:17:04 PM [vite] (client) hmr update /src/styles.css
+8:17:43 PM [vite] (client) hmr update /src/AppV2.tsx
+8:18:15 PM [vite] (client) hmr update /src/AppV2.tsx
+[Nados supervisor] api running
+Nados AI server listening on http://127.0.0.1:8787 (Gemini API / AI Studio, Groq, True SOTA, True SOTA 2, Groq 2, Gemini AI Studio 2, Hugging Face Qwen, Hugging Face DeepSeek)
+8:43:42 PM [vite] (client) hmr update /src/AppV2.tsx, /src/Composer.tsx
+8:43:42 PM [vite] (client) hmr update /src/Composer.tsx
+8:43:42 PM [vite] (client) hmr update /src/AppV2.tsx
+8:43:42 PM [vite] (client) hmr invalidate /src/Composer.tsx Could not Fast Refresh ("modeData" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+8:43:42 PM [vite] (client) hmr update /src/AppV2.tsx

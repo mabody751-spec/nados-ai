@@ -1,0 +1,78 @@
+(node:23208) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[Nados supervisor] api stopped (4294967295); restarting in 750ms
+(node:18084) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[Nados supervisor] api stopped (4294967295); restarting in 1500ms
+(node:32604) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[Nados supervisor] api stopped (4294967295); restarting in 2250ms
+8:06:22 PM [vite] http proxy error: /api/health
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+8:06:23 PM [vite] http proxy error: /api/health
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+8:06:23 PM [vite] http proxy error: /api/health
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+(node:32740) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+8:16:32 PM [vite] (client) [Unhandled error] TypeError: Cannot read properties of undefined (reading 'find')
+ > Composer src/Composer.tsx:57:37
+    55 |  export function Composer(props: ComposerProps) {
+    56 |    const { Icon } = modeData[props.mode]
+    57 |    const selectedModel = props.models.find((item) => item.id === props.model) || props.models[0] || {
+       |                                       ^
+    58 |      id: 'nados-v1', label: 'Nados v1.0', provider: 'توجيه تلقائي', model: 'أفضل نموذج متاح', providerId: 'auto', webS...
+    59 |    }
+ > Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:28571:19
+ > renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:8030:21
+ > updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10569:18
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:12205:17
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:1045:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:19176:21
+ > workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:19004:40
+ > renderRootSync node_modules/react-dom/cjs/react-dom-client.development.js:18985:10
+ > performWorkOnRoot node_modules/react-dom/cjs/react-dom-client.development.js:18094:34
+
+8:16:32 PM [vite] (client) [console.warn] An error occurred in the <Composer> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+8:16:42 PM [vite] (client) [Unhandled error] TypeError: Cannot read properties of undefined (reading 'find')
+ > Composer src/Composer.tsx:57:37
+    55 |  export function Composer(props: ComposerProps) {
+    56 |    const { Icon } = modeData[props.mode]
+    57 |    const selectedModel = props.models.find((item) => item.id === props.model) || props.models[0] || {
+       |                                       ^
+    58 |      id: 'nados-v1', label: 'Nados v1.0', provider: 'توجيه تلقائي', model: 'أفضل نموذج متاح', providerId: 'auto', webS...
+    59 |    }
+ > Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:28571:19
+ > renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:8030:21
+ > updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10569:18
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:12205:17
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:1045:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:19176:21
+ > workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:19004:40
+ > renderRootSync node_modules/react-dom/cjs/react-dom-client.development.js:18985:10
+ > performWorkOnRoot node_modules/react-dom/cjs/react-dom-client.development.js:18094:34
+
+8:16:42 PM [vite] (client) [console.warn] An error occurred in the <Composer> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+8:18:52 PM [vite] http proxy error: /api/chat/stream
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[Nados supervisor] api stopped (4294967295); restarting in 3000ms
+8:18:53 PM [vite] http proxy error: /api/health
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+8:18:53 PM [vite] http proxy error: /api/models
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+(node:21096) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)

@@ -1,0 +1,43 @@
+{
+  "name": "nados-ai-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c yellow,cyan \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:web": "vite",
+    "dev:server": "node --watch server/index.mjs",
+    "keepalive": "node server/supervisor.mjs",
+    "build": "tsc -b && vite build",
+    "test": "node --test server/*.test.mjs",
+    "test:e2e": "playwright test",
+    "preview": "npm run build && wrangler dev",
+    "start": "node server/index.mjs",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "@huggingface/inference": "^4.13.28",
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "@vitejs/plugin-react": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "lucide-react": "latest",
+    "multer": "latest",
+    "openai": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.56.0",
+    "@playwright/test": "^1.63.0",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "concurrently": "latest",
+    "typescript": "latest",
+    "wrangler": "^4.135.0"
+  }
+}
