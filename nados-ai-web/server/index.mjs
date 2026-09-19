@@ -16,6 +16,7 @@ import { availableModels, resolveModelSelection } from './models.mjs'
 import { getConversations, getTrainingStats, saveConversation, saveTeacherOutput, saveTrainingExample, supabaseEnabled } from './supabaseStore.mjs'
 import { buildProviderRegistry, swarmLearn, newTrainingJob, TRAINING_PROVIDER_STATE } from './training/engine.mjs'
 import { callProvider } from './providers.mjs'
+import { exportDatasetFromSupabase, kaggleEnabled, kernelStatus, pullKernelOutput, pushDataset, pushTrainingKernel, verifyKaggleCredentials } from './training/kaggleBridge.mjs'
 
 const app = express()
 const port = Number(process.env.PORT || 8787)
@@ -294,6 +295,42 @@ app.post('/api/training/generate', requireLocalOrigin, async (request, response)
 app.post('/api/training/queue', requireLocalOrigin, (request, response) => {
   const job = newTrainingJob(request.body || {})
   response.status(202).json({ queued: true, job })
+})
+
+app.get('/api/training/kaggle/status', requireLocalOrigin, async (_request, response) => {
+  const enabled = kaggleEnabled()
+  if (!enabled) return response.json({ enabled: false, state: 'WAITING_FOR_CREDENTIALS', reason: 'يلزم اسم المستخدم ومفتاح Kaggle API (kaggle.com → Settings → API).' })
+  try {
+    const verification = await verifyKaggleCredentials()
+    if (!verification.ok) return response.json({ enabled: true, state: 'INVALID_CREDENTIALS', reason: verification.error })
+    const kernel = await kernelStatus()
+    response.json({ enabled: true, state: 'READY', kernel })
+  } catch (error) {
+    response.status(502).json({ enabled: true, state: 'ERROR', reason: error.message || 'فشل الاتصال بـ Kaggle.' })
+  }
+})
+
+app.post('/api/training/kaggle/train', requireLocalOrigin, async (_request, response) => {
+  if (!kaggleEnabled()) return response.status(400).json({ error: 'KAGGLE_WAITING_FOR_CREDENTIALS: يلزم اسم المستخدم ومفتاح Kaggle API في .env.' })
+  try {
+    const dataset = await exportDatasetFromSupabase()
+    if (!dataset.count) return response.status(400).json({ error: 'لا توجد أمثلة تدريب كافية في Supabase بعد — شغّل دورات توليد أولاً.' })
+    const pushed = await pushDataset(dataset.jsonl)
+    const kernel = await pushTrainingKernel()
+    response.status(202).json({ started: true, dataset: { ref: pushed.ref, examples: dataset.count }, kernel })
+  } catch (error) {
+    response.status(502).json({ error: error.message || 'فشل بدء التدريب على Kaggle.' })
+  }
+})
+
+app.get('/api/training/kaggle/output', requireLocalOrigin, async (_request, response) => {
+  if (!kaggleEnabled()) return response.status(400).json({ error: 'KAGGLE_WAITING_FOR_CREDENTIALS.' })
+  try {
+    const output = await pullKernelOutput()
+    response.json(output)
+  } catch (error) {
+    response.status(502).json({ error: error.message || 'فشل جلب مخرجات التدريب.' })
+  }
 })
 
 app.get('/api/training/stats', requireLocalOrigin, async (_request, response) => {
