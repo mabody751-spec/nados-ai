@@ -14,6 +14,8 @@ import { closeComputerSession, computerStatus, executeComputerStep, openComputer
 import { capabilityReply, effectiveProviderMode, identityReply, isNadosCapabilityQuestion, isNadosIdentityQuestion, modeInstructions } from './instructions.mjs'
 import { availableModels, resolveModelSelection } from './models.mjs'
 import { getConversations, saveConversation, supabaseEnabled } from './supabaseStore.mjs'
+import { buildProviderRegistry, swarmLearn, newTrainingJob, TRAINING_PROVIDER_STATE } from './training/engine.mjs'
+import { callProvider } from './providers.mjs'
 
 const app = express()
 const port = Number(process.env.PORT || 8787)
@@ -248,6 +250,45 @@ app.get('/api/conversations', requireLocalOrigin, async (request, response) => {
   if (!supabaseEnabled()) return response.json({ enabled: false, conversations: [] })
   const conversations = await getConversations(request.query.limit)
   response.json({ enabled: true, conversations })
+})
+
+app.get('/api/training/registry', requireLocalOrigin, (_request, response) => {
+  response.json({ providers: buildProviderRegistry(), trainingProvider: TRAINING_PROVIDER_STATE })
+})
+
+app.post('/api/training/generate', requireLocalOrigin, async (request, response) => {
+  try {
+    const { message, mode, instructions } = request.body || {}
+    if (!message?.trim()) return response.status(400).json({ error: 'رسالة المهمة مطلوبة.' })
+    const result = await swarmLearn({ callProvider, message, mode: mode || 'create', instructions: instructions || modeInstructions(mode || 'create', {}) })
+    response.json({
+      status: result.status,
+      reason: result.reason || null,
+      taskTypes: result.taskTypes,
+      teachers: result.teachers,
+      best: result.best ? {
+        teacher: result.best.teacherId,
+        model: result.best.teacherModel,
+        qualityScore: result.best.evaluation?.qualityScore,
+        agreementScore: result.best.evaluation?.agreementScore,
+        preview: result.best.text?.slice(0, 200),
+      } : null,
+      outputs: result.outputs.map((item) => ({
+        teacher: item.teacherId,
+        ok: item.ok,
+        qualityScore: item.evaluation?.qualityScore ?? null,
+        accepted: item.evaluation?.accepted ?? false,
+        error: item.error || null,
+      })),
+    })
+  } catch (error) {
+    response.status(500).json({ error: error.message || 'فشل توليد بيانات التدريب.' })
+  }
+})
+
+app.post('/api/training/queue', requireLocalOrigin, (request, response) => {
+  const job = newTrainingJob(request.body || {})
+  response.status(202).json({ queued: true, job })
 })
 
 app.post('/api/providers/stats/reset', requireLocalOrigin, (request, response) => {

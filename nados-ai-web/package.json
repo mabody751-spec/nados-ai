@@ -9,7 +9,7 @@
     "dev:server": "node --watch server/index.mjs",
     "keepalive": "node server/supervisor.mjs",
     "build": "tsc -b && vite build",
-    "test": "node --test server/*.test.mjs",
+    "test": "node --test server/*.test.mjs server/training/*.test.mjs",
     "test:e2e": "playwright test",
     "preview": "npm run build && wrangler dev",
     "start": "node server/index.mjs",

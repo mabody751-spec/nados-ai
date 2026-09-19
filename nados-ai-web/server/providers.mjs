@@ -468,7 +468,7 @@ function groqSearchInstructions(mode) {
   ].join('\n')
 }
 
-async function callProvider(id, context) {
+export async function callProvider(id, context) {
   const runtime = findRuntimeProvider(id)
   if (id === 'gemini') return await callGemini(context)
   if (id === 'groq') {
