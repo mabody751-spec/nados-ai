@@ -127,8 +127,31 @@ export function TrainingCenter() {
             <div className="training-card">
               <h3>التدريب والجدولة</h3>
               <div className="training-status">
-                <div><span>مزوّد التدريب</span><strong className="pending">{data.trainingProvider === 'WAITING_FOR_CREDENTIALS' ? 'بانتظار الاعتماديات' : data.trainingProvider}</strong></div>
-                <div><span>الحالة</span><strong className="pending">بانتظار Cloud GPU</strong><small>التدريب الحقيقي يتطلب GPU سحابياً يعتمده المالك — لا تدريب وهمي.</small></div>
+                {data.kaggle?.model && (
+                  <div>
+                    <span>النموذج المتدرب</span>
+                    <strong className={data.kaggle.model.done ? 'accepted' : data.kaggle.model.state === 'running' ? 'running' : 'pending'}>
+                      {data.kaggle.model.done ? 'Nados v1.1 — اكتمل التدريب ✓' : data.kaggle.model.state === 'running' ? 'Nados v1.1 — يتدرب الآن' : `Nados v1.1 — ${data.kaggle.model.state}`}
+                    </strong>
+                    <small>{data.kaggle.model.base}</small>
+                  </div>
+                )}
+                {data.kaggle?.params?.trainable && (
+                  <div>
+                    <span>معاملات النموذج (لايف)</span>
+                    <strong className="accepted" dir="ltr">{data.kaggle.params.trainable.toLocaleString('en-US')} / {data.kaggle.params.total?.toLocaleString('en-US')}</strong>
+                    <small>قابلة للتدريب: {data.kaggle.params.percent}% من {formatNumber(data.kaggle.params.total)}</small>
+                  </div>
+                )}
+                {data.kaggle?.progress && (
+                  <div>
+                    <span>التقدم</span>
+                    <strong dir="ltr">{data.kaggle.progress.stepsDone !== null ? `${data.kaggle.progress.stepsDone}/${data.kaggle.progress.stepsTotal} steps` : '0/120 steps'}</strong>
+                    <small>GPU: {data.kaggle.progress.gpu || 'UNKNOWN'}</small>
+                    {data.kaggle.progress.stepsDone !== null && <div className="training-progress-bar"><div style={{ width: `${Math.round((data.kaggle.progress.stepsDone / data.kaggle.progress.stepsTotal) * 100)}%` }} /></div>}
+                  </div>
+                )}
+                <div><span>مزوّد التدريب</span><strong className="accepted">Kaggle — GPU مجاني (Free-First)</strong></div>
                 <div><span>المجدول</span><strong>{data.scheduler.enabled ? `يعمل كل ${formatInterval(data.scheduler.intervalMs)}` : 'متوقف'}</strong><small>{data.scheduler.enabled ? `الدورات: ${data.scheduler.runs} · الأخيرة: ${data.scheduler.lastRunAt ? new Date(data.scheduler.lastRunAt).toLocaleTimeString('ar') : '-'}` : 'فعّله بـ NADOS_TRAINING_SCHEDULER=on'}</small></div>
               </div>
             </div>

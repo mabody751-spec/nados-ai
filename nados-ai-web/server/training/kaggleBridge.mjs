@@ -1,8 +1,20 @@
+import { execFile } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 const KAGGLE_API = 'https://www.kaggle.com/api/v1'
 const DATASET_SLUG = 'nados-training-dataset'
-const KERNEL_SLUG = 'nados-train'
+const kernelSlug = () => String(process.env.KAGGLE_KERNEL_SLUG || '').trim() || 'nados-train'
 
 export function kaggleConfig() {
+  const apiToken = String(process.env.KAGGLE_API_TOKEN || '').trim()
+  if (apiToken) {
+    return { username: String(process.env.KAGGLE_USERNAME || '').trim(), token: apiToken, auth: `Bearer ${apiToken}` }
+  }
   const username = String(process.env.KAGGLE_USERNAME || '').trim()
   const key = String(process.env.KAGGLE_KEY || '').trim()
   if (!username || !key) return null
@@ -10,7 +22,8 @@ export function kaggleConfig() {
 }
 
 export function kaggleEnabled() {
-  return kaggleConfig() !== null
+  const config = kaggleConfig()
+  return Boolean(config && config.auth)
 }
 
 async function kaggleFetch(path, { method = 'GET', body = null, raw = false } = {}) {
@@ -35,7 +48,7 @@ async function kaggleFetch(path, { method = 'GET', body = null, raw = false } = 
 
 export async function verifyKaggleCredentials() {
   try {
-    await kaggleFetch('/datasets/list?mine=true&pageSize=1')
+    await kaggleFetch('/datasets/list?pageSize=1')
     return { ok: true }
   } catch (error) {
     return { ok: false, error: String(error?.message || error) }
@@ -113,23 +126,6 @@ print("DONE")
 
 export async function pushDataset(jsonl) {
   const config = kaggleConfig()
-  const ref = `${config.username}/${DATASET_SLUG}`
-  const metadata = {
-    id: ref,
-    title: 'Nados Training Dataset',
-    licenses: [{ name: 'CC0-1.0' }],
-  }
-  try {
-    await kaggleFetch('/datasets/create/new', { method: 'POST', body: metadata })
-  } catch (error) {
-    if (!/already exists|409/i.test(String(error?.message || ''))) {
-      try {
-        await kaggleFetch(`/datasets/create/version/${ref}`, { method: 'POST', body: metadata })
-      } catch (versionError) {
-        if (!/already exists/i.test(String(versionError?.message || ''))) throw error
-      }
-    }
-  }
   const fileName = 'training_examples.jsonl'
   const contentLength = Buffer.byteLength(jsonl, 'utf8')
   const lastModified = Math.floor(Date.now() / 1000)
@@ -148,12 +144,22 @@ export async function pushDataset(jsonl) {
     signal: AbortSignal.timeout(120_000),
   })
   if (!putResponse.ok) throw new Error(`Kaggle: فشل رفع الملف (HTTP ${putResponse.status}).`)
-  return { ref, uploaded: true }
+  const metadata = {
+    ownerSlug: config.username,
+    slug: DATASET_SLUG,
+    title: 'Nados Training Dataset',
+    isPrivate: true,
+    licenses: [{ name: 'CC0-1.0' }],
+  }
+  const created = await kaggleFetch('/datasets/create/new', { method: 'POST', body: metadata })
+  const createdError = created?.error || created?.errorNullable
+  if (createdError && !/already exists/i.test(String(createdError))) throw new Error(`Kaggle: ${createdError}`)
+  return { ref: `${config.username}/${DATASET_SLUG}`, uploaded: true, examples: null, created }
 }
 
 export async function pushTrainingKernel() {
   const config = kaggleConfig()
-  const kernelRef = `${config.username}/${KERNEL_SLUG}`
+  const kernelRef = `${config.username}/${kernelSlug()}`
   const body = {
     id: kernelRef,
     title: 'Nados Train',
@@ -173,22 +179,64 @@ export async function pushTrainingKernel() {
   return { kernelRef, result }
 }
 
+async function kaggleCli(args) {
+  const env = { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' }
+  const { stdout, stderr } = await execFileAsync('python', ['-m', 'kaggle', ...args], { env, timeout: 180_000, maxBuffer: 20 * 1024 * 1024, windowsHide: true })
+  return { stdout: stdout || '', stderr: stderr || '' }
+}
+
 export async function kernelStatus() {
   const config = kaggleConfig()
-  const kernelRef = `${config.username}/${KERNEL_SLUG}`
+  if (!config) return { state: 'WAITING_FOR_CREDENTIALS', message: 'يلزم بيانات Kaggle API.' }
+  const kernelRef = `${config.username}/${kernelSlug()}`
   try {
-    const status = await kaggleFetch(`/kernels/status?id=${encodeURIComponent(kernelRef)}`)
-    return { kernelRef, status: status?.status || 'unknown', message: status?.failureMessage || null }
+    const { stdout } = await kaggleCli(['kernels', 'status', kernelRef])
+    const match = /status "(.*?)"/.exec(stdout)
+    const raw = match?.[1] || 'unknown'
+    const state = raw.includes('RUNNING') ? 'running' : raw.includes('COMPLETE') ? 'complete' : raw.includes('ERROR') ? 'error' : raw.replace('KernelWorkerStatus.', '').toLowerCase()
+    return { kernelRef, status: raw, state }
   } catch (error) {
-    const message = String(error?.message || '')
-    if (/404/i.test(message)) return { kernelRef, status: 'not_found', message: 'النواة غير موجودة بعد — شغّل تدريباً أولاً.' }
-    throw error
+    const message = String(error?.message || error)
+    if (/not found|404|cannot access|permission.{0,30}denied|wrong kernel slug/i.test(message)) return { kernelRef, status: 'not_found', state: 'not_found', message: 'النواة غير موجودة بعد — شغّل تدريباً أولاً.' }
+    return { kernelRef, status: 'unknown', state: 'unknown', message: message.slice(0, 200) }
   }
+}
+
+export async function kernelLiveState() {
+  const config = kaggleConfig()
+  if (!config) return { state: 'WAITING_FOR_CREDENTIALS' }
+  const status = await kernelStatus()
+  const live = { ...status, paramsTrainable: null, paramsTotal: null, paramsPercent: null, stepsDone: null, stepsTotal: 120, gpu: null, done: false, logTail: [] }
+  if (['running', 'complete', 'error'].includes(status.state)) {
+    try {
+      const outDir = join(tmpdir(), `nados-kaggle-out-${config.username}-${Date.now()}`)
+      mkdirSync(outDir, { recursive: true })
+      await kaggleCli(['kernels', 'output', `${config.username}/${kernelSlug()}`, '-p', outDir])
+      const log = await readFile(join(outDir, `${kernelSlug()}.log`), 'utf8')
+      const parsed = JSON.parse(log)
+      const all = parsed.map((event) => event?.data || '').join('')
+      const paramsMatch = /trainable params: ([\d,]+) \|\| all params: ([\d,]+) \|\| trainable%: ([\d.]+)/.exec(all)
+      if (paramsMatch) {
+        live.paramsTrainable = Number(paramsMatch[1].replace(/,/g, ''))
+        live.paramsTotal = Number(paramsMatch[2].replace(/,/g, ''))
+        live.paramsPercent = Number(paramsMatch[3])
+      }
+      const stepMatches = [...all.matchAll(/(\d+)\/120 \[/g)]
+      if (stepMatches.length) live.stepsDone = Number(stepMatches[stepMatches.length - 1][1])
+      const gpuMatch = /gpu: (.+)/.exec(all)
+      if (gpuMatch) live.gpu = gpuMatch[1].trim()
+      live.done = /TRAINING_DONE/.test(all)
+      live.logTail = parsed.slice(-6).map((event) => String(event?.data || '').trim()).filter(Boolean)
+    } catch (error) {
+      console.log(`[kaggle-live] log pull failed: ${String(error?.message || error).slice(0, 150)}`)
+    }
+  }
+  return live
 }
 
 export async function pullKernelOutput() {
   const config = kaggleConfig()
-  const kernelRef = `${config.username}/${KERNEL_SLUG}`
+  const kernelRef = `${config.username}/${kernelSlug()}`
   const response = await kaggleFetch(`/kernels/output?id=${encodeURIComponent(kernelRef)}`, { raw: false })
   return { kernelRef, listing: response }
 }

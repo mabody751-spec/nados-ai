@@ -157,25 +157,35 @@ export interface TrainingCenterData {
   supabase: { enabled: boolean; outputsTotal?: number; outputsAccepted?: number; examplesTotal?: number }
   scheduler: { enabled: boolean; intervalMs: number; lastRunAt: string | null; runs: number }
   usage: Record<string, { totalCalls: number; successCalls: number; failedCalls: number; errorRate: number; avgLatencyMs: number }> | null
+  kaggle?: {
+    state: string
+    model?: { version: string; base: string; state: string; done: boolean }
+    params?: { trainable: number | null; total: number | null; percent: number | null }
+    progress?: { stepsDone: number | null; stepsTotal: number; gpu: string | null }
+    dataset?: { examples: number; outputs: number; accepted: number }
+  }
 }
 
 export async function getTrainingCenter(): Promise<TrainingCenterData | null> {
   try {
-    const [registryRes, statsRes, usageRes] = await Promise.all([
+    const [registryRes, statsRes, usageRes, kaggleRes] = await Promise.all([
       fetch('/api/training/registry', { signal: AbortSignal.timeout(8000) }),
       fetch('/api/training/stats', { signal: AbortSignal.timeout(8000) }),
       fetch('/api/providers/stats', { signal: AbortSignal.timeout(8000) }),
+      fetch('/api/training/kaggle/status', { signal: AbortSignal.timeout(240_000) }),
     ])
     if (!registryRes.ok || !statsRes.ok) return null
     const registry = await registryRes.json() as { providers: TrainingTeacher[]; trainingProvider: string }
     const stats = await statsRes.json() as { supabase: TrainingCenterData['supabase']; scheduler: TrainingCenterData['scheduler'] }
     const usage = usageRes.ok ? ((await usageRes.json() as { stats?: TrainingCenterData['usage'] }).stats || null) : null
+    const kaggle = kaggleRes.ok ? ((await kaggleRes.json() as TrainingCenterData['kaggle']) || undefined) : undefined
     return {
       providers: registry.providers || [],
       trainingProvider: registry.trainingProvider,
       supabase: stats.supabase || { enabled: false },
       scheduler: stats.scheduler || { enabled: false, intervalMs: 0, lastRunAt: null, runs: 0 },
       usage,
+      kaggle,
     }
   } catch {
     return null

@@ -16,7 +16,7 @@ import { availableModels, resolveModelSelection } from './models.mjs'
 import { getConversations, getTrainingStats, saveConversation, saveTeacherOutput, saveTrainingExample, supabaseEnabled } from './supabaseStore.mjs'
 import { buildProviderRegistry, swarmLearn, newTrainingJob, TRAINING_PROVIDER_STATE } from './training/engine.mjs'
 import { callProvider } from './providers.mjs'
-import { exportDatasetFromSupabase, kaggleEnabled, kernelStatus, pullKernelOutput, pushDataset, pushTrainingKernel, verifyKaggleCredentials } from './training/kaggleBridge.mjs'
+import { exportDatasetFromSupabase, kaggleEnabled, kernelLiveState, kernelStatus, pullKernelOutput, pushDataset, pushTrainingKernel, verifyKaggleCredentials } from './training/kaggleBridge.mjs'
 
 const app = express()
 const port = Number(process.env.PORT || 8787)
@@ -303,8 +303,19 @@ app.get('/api/training/kaggle/status', requireLocalOrigin, async (_request, resp
   try {
     const verification = await verifyKaggleCredentials()
     if (!verification.ok) return response.json({ enabled: true, state: 'INVALID_CREDENTIALS', reason: verification.error })
-    const kernel = await kernelStatus()
-    response.json({ enabled: true, state: 'READY', kernel })
+    const live = await kernelLiveState()
+    const stats = await getTrainingStats()
+    response.json({
+      enabled: true,
+      state: live.state,
+      model: { version: 'Nados v1.1', base: 'gemma-2-9b (QLoRA)', state: live.state, done: live.done },
+      params: { trainable: live.paramsTrainable, total: live.paramsTotal, percent: live.paramsPercent },
+      progress: { stepsDone: live.stepsDone, stepsTotal: live.stepsTotal, gpu: live.gpu },
+      dataset: { examples: stats.examplesTotal, outputs: stats.outputsTotal, accepted: stats.outputsAccepted },
+      scheduler: { enabled: schedulerEnabled, intervalMs: schedulerIntervalMs, runs: schedulerRuns, lastRunAt: schedulerLastRun },
+      logTail: live.logTail,
+      kernel: live,
+    })
   } catch (error) {
     response.status(502).json({ enabled: true, state: 'ERROR', reason: error.message || 'فشل الاتصال بـ Kaggle.' })
   }
@@ -342,16 +353,44 @@ app.get('/api/training/stats', requireLocalOrigin, async (_request, response) =>
   })
 })
 
-const trainingSeeds = [
-  'اشرح فوائد الاختبارات الآلية في هندسة البرمجيات بأسلوب مبسط.',
-  'اكتب دالة JavaScript تنظف مدخلات المستخدم من الوسوم الخطيرة.',
-  'قارن بين SQL وNoSQL مع أمثلة عملية قصيرة.',
-  'اكتب مكون React يعرض قائمة مهام مع إضافة وحذف.',
-  'اذكر خمس نصائح لتحسين أداء تطبيقات الويب.',
-  'اشرح الفرق بين Promise.all وPromise.allSettled بمثال.',
-  'اكتب استعلام SQL يجمع بيانات المبيعات حسب الشهر.',
-  'اشرح كيف تعمل طبقات الأمان في تطبيق حديث.',
+const trainingTopics = [
+  { topic: 'الاختبارات الآلية في البرمجة', domain: 'programming' },
+  { topic: 'تنظيف مدخلات المستخدم من الحقن', domain: 'security' },
+  { topic: 'الفروق بين أنواع قواعد البيانات', domain: 'databases' },
+  { topic: 'مكونات React لإدارة الحالة', domain: 'frontend' },
+  { topic: 'تحسين أداء تطبيقات الويب', domain: 'performance' },
+  { topic: 'الوعود والبرمجة غير المتزامنة', domain: 'async' },
+  { topic: 'استعلامات SQL للتجميع والتحليل', domain: 'sql' },
+  { topic: 'طبقات الأمان في التطبيقات الحديثة', domain: 'security' },
+  { topic: 'بناء واجهات متجاوبة مع الجوال', domain: 'frontend' },
+  { topic: 'التوثيق الجيد للمشاريع البرمجية', domain: 'docs' },
+  { topic: 'الخوارزميات وترتيب البيانات', domain: 'algorithms' },
+  { topic: 'معالجة الأخطاء والحالات الطارئة', domain: 'errors' },
 ]
+
+const trainingVerbs = ['اشرح', 'اكتب مثالاً عملياً عن', 'قارن بين الجوانب المهمة في', 'لخص أهم النقاط حول', 'اذكر ثلاث فوائد عملية لـ', 'علل أهمية', 'اكتب كوداً يوضح', 'اشرح بالتفصيل']
+
+const trainingDetails = [
+  'مع أمثلة عملية قصيرة.',
+  'بأسلوب مبسط للمبتدئين.',
+  'مع مخطط منطقي واضح.',
+  'مع مقارنة سريعة بين البدائل.',
+  'باللغة العربية الفصحى المبسطة.',
+  'مع حالات استخدام واقعية.',
+  'مع نصائح عملية قابلة للتطبيق فوراً.',
+  'بإيجاز شديد في ثلاث نقاط فقط.',
+  'مع مثال كود جاهز للتشغيل.',
+  'من منظور هندسة البرمجيات الحديثة.',
+]
+
+let seedCursor = Math.floor(Math.random() * 10_000)
+function generateSeedTask() {
+  const topic = trainingTopics[(seedCursor + Math.floor(Math.random() * trainingTopics.length)) % trainingTopics.length]
+  const verb = trainingVerbs[Math.floor(Math.random() * trainingVerbs.length)]
+  const detail = trainingDetails[Math.floor(Math.random() * trainingDetails.length)]
+  seedCursor += 1
+  return `${verb} ${topic.topic} ${detail}`
+}
 
 let schedulerEnabled = String(process.env.NADOS_TRAINING_SCHEDULER || 'off').toLowerCase() === 'on'
 let schedulerIntervalMs = Math.max(60_000, Number(process.env.NADOS_TRAINING_INTERVAL_MS) || 600_000)
@@ -361,7 +400,7 @@ let schedulerSeedIndex = 0
 
 async function runSchedulerCycle() {
   try {
-    const message = trainingSeeds[schedulerSeedIndex % trainingSeeds.length]
+    const message = generateSeedTask()
     schedulerSeedIndex += 1
     const result = await swarmLearn({ callProvider, message, mode: 'create', instructions: modeInstructions('create', {}) })
     const persistResults = await Promise.all([

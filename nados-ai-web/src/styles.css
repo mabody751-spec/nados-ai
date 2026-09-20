@@ -1670,6 +1670,11 @@ kbd { border: 1px solid #454d46; border-radius: 4px; color: #8f9891; padding: 2p
 .training-status span { font-size: 10.5px; color: var(--muted); }
 .training-status strong { font-size: 12.5px; }
 .training-status strong.pending { color: var(--amber); }
+.training-status strong.accepted { color: var(--mint-dark); }
+:root[data-theme='dark'] .training-status strong.accepted { color: var(--mint); }
+.training-status strong.running { color: var(--blue); }
+.training-progress-bar { height: 6px; border-radius: 999px; background: var(--panel-strong); overflow: hidden; margin-top: 5px; }
+.training-progress-bar > div { height: 100%; background: var(--mint); border-radius: 999px; transition: width .4s ease; }
 .training-status small { font-size: 10.5px; color: var(--muted); }
 .training-note { font-size: 12.5px; color: var(--muted); }
 

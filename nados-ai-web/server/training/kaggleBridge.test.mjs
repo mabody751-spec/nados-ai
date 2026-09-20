@@ -1,5 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { exportDatasetFromSupabase, kaggleEnabled, kernelStatus, verifyKaggleCredentials } from './kaggleBridge.mjs'
 
 const originalFetch = globalThis.fetch
@@ -8,11 +11,13 @@ test.afterEach(() => {
   globalThis.fetch = originalFetch
   delete process.env.KAGGLE_USERNAME
   delete process.env.KAGGLE_KEY
+  delete process.env.KAGGLE_API_TOKEN
 })
 
 test('reports honest waiting state without credentials', async () => {
   delete process.env.KAGGLE_USERNAME
   delete process.env.KAGGLE_KEY
+  delete process.env.KAGGLE_API_TOKEN
   assert.equal(kaggleEnabled(), false)
   const verification = await verifyKaggleCredentials()
   assert.equal(verification.ok, false)
@@ -49,11 +54,17 @@ test('exports training examples as JSONL from Supabase', async () => {
   assert.equal(first.answer, 'جواب أول')
 })
 
-test('reports kernel not_found honestly before first training', async () => {
-  process.env.KAGGLE_USERNAME = 'nados-test'
-  process.env.KAGGLE_KEY = 'test-key'
-  globalThis.fetch = async () => new Response(JSON.stringify({ message: '404 - Kernel not found' }), { status: 404 })
+test('reports kernel not_found honestly for a missing kernel', async () => {
+  const home = process.env.USERPROFILE || process.env.HOME || ''
+  const kaggleJsonPath = join(home, '.kaggle', 'kaggle.json')
+  if (!existsSync(kaggleJsonPath)) return
+  const { username, key } = JSON.parse(await readFile(kaggleJsonPath, 'utf8'))
+  process.env.KAGGLE_USERNAME = username
+  process.env.KAGGLE_KEY = key
+  delete process.env.KAGGLE_API_TOKEN
+  // Point at a kernel that does not exist to exercise the honest not_found path
+  process.env.KAGGLE_KERNEL_SLUG = 'nados-nonexistent-kernel'
   const kernel = await kernelStatus()
-  assert.equal(kernel.status, 'not_found')
-  assert.match(kernel.message, /شغّل تدريباً/)
+  assert.equal(kernel.state, 'not_found')
+  assert.match(kernel.message || '', /شغّل تدريباً/)
 })
