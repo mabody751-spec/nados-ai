@@ -7,6 +7,44 @@ import { findRuntimeProvider, publicRuntimeProviders, removeRuntimeProvider, run
 const SEARCH_MODES = new Set(['web', 'research', 'academic'])
 const HUGE_MESSAGE_TOKENS = 90_000
 
+export async function callLocalNados({ message, files, history = [], instructions, model }) {
+  const baseUrl = String(process.env.NADOS_LOCAL_LLM_URL || 'http://127.0.0.1:8080').trim().replace(/\/$/, '')
+  try {
+    await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(4000) })
+  } catch {
+    throw new Error(`NADOS_LOCAL_LLM_OFFLINE: خادم استدلال Nados v1.1 المحلي غير مشغّل على ${baseUrl} — شغّل llama-server بالأوزان المدرّبة أولاً.`)
+  }
+  const fittedHistory = fitHistoryToContext(history, historyCharacterBudget(model))
+  const rawContent = compatibleContent(message, files)
+  const fittedContent = typeof rawContent === 'string'
+    ? fitMessageToContext({ model, instructions, history: fittedHistory, message: rawContent })
+    : message
+  const messages = [
+    { role: 'system', content: instructions },
+    ...fittedHistory.map((item) => ({ role: item.role, content: item.content })),
+    { role: 'user', content: fittedContent },
+  ]
+  const data = await fetchJson(`${baseUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: model || 'nados-v1-1', messages, temperature: 0.25, max_tokens: computeMaxTokens({ model, instructions, history: fittedHistory, message: fittedContent }) }),
+  }, 'Nados v1.1')
+  const text = contentText(data?.choices?.[0]?.message?.content)
+  if (!text) throw new Error('Nados v1.1: لم يصل نص من الخادم المحلي.')
+  const usage = data?.usage || null
+  return {
+    text,
+    sources: [],
+    provider: 'nados-local',
+    usage: {
+      prompt: usage?.prompt_tokens ?? null,
+      completion: usage?.completion_tokens ?? null,
+      total: usage?.total_tokens ?? null,
+      contextWindow: modelTokenLimits(model).context,
+    },
+  }
+}
+
 function isCodingRequest(message) {
   const text = String(message || '')
   return /اكتب\s+(كود|دالة|وظيفة|دوال?|فئة|برنامج)|كود.*(function|api|مكوِّن)|(برمجة|package\.json|component|function|class|write (?:a )?code|code\b|سكريبت|script\b)/i.test(text)

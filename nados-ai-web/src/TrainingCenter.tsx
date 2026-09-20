@@ -26,14 +26,21 @@ export function TrainingCenter() {
   const [generating, setGenerating] = useState(false)
   const [result, setGeneratingResult] = useState<{ status: string; persisted: number; best: { teacher: string; qualityScore: number } | null; outputs: Array<{ teacher: string; ok: boolean; qualityScore: number | null; accepted: boolean; error: string | null }> } | null>(null)
   const [error, setError] = useState('')
+  const [kaggleLoading, setKaggleLoading] = useState(true)
 
   const refresh = async () => {
     setLoading(true)
-    const next = await getTrainingCenter()
+    const next = await getTrainingCenter(false)
     if (!next) setError('الإدارة متاحة من نسخة Nados المحلية فقط — افتح localhost:2000.')
     else setError('')
     setData(next)
     setLoading(false)
+    if (next) {
+      setKaggleLoading(true)
+      const withKaggle = await getTrainingCenter(true)
+      if (withKaggle) setData(withKaggle)
+      setKaggleLoading(false)
+    }
   }
 
   useEffect(() => { void refresh() }, [])
@@ -127,7 +134,8 @@ export function TrainingCenter() {
             <div className="training-card">
               <h3>التدريب والجدولة</h3>
               <div className="training-status">
-                {data.kaggle?.model && (
+                {kaggleLoading && <div><span>Kaggle</span><strong className="pending">جارٍ التحقق من حالة التدريب...</strong></div>}
+                {!kaggleLoading && data.kaggle?.model && (
                   <div>
                     <span>النموذج المتدرب</span>
                     <strong className={data.kaggle.model.done ? 'accepted' : data.kaggle.model.state === 'running' ? 'running' : 'pending'}>
@@ -136,7 +144,7 @@ export function TrainingCenter() {
                     <small>{data.kaggle.model.base}</small>
                   </div>
                 )}
-                {data.kaggle?.params?.trainable && (
+                {!kaggleLoading && data.kaggle?.params?.trainable && (
                   <div>
                     <span>معاملات النموذج (لايف)</span>
                     <strong className="accepted" dir="ltr">{data.kaggle.params.trainable.toLocaleString('en-US')} / {data.kaggle.params.total?.toLocaleString('en-US')}</strong>

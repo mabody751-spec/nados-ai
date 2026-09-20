@@ -1,4 +1,4 @@
-const API_TARGET = 'https://comments-premiere-however-idea.trycloudflare.com'
+const API_TARGET = 'https://why-vbulletin-premiere-fellowship.trycloudflare.com'
 
 export default {
   async fetch(request, env) {

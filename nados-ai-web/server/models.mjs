@@ -10,6 +10,20 @@ export function availableModels() {
     files: true,
   }]
 
+  if (process.env.NADOS_LOCAL_LLM_URL?.trim() || process.env.KAGGLE_TRAINING_DONE === '1') {
+    models.push({
+      id: 'nados-v1-1',
+      label: 'Nados v1.1',
+      providerId: 'nados-local',
+      provider: 'Nados',
+      model: 'gemma-2-9b-it + LoRA Nados (QLoRA 120 steps)',
+      webSearch: false,
+      vision: false,
+      files: false,
+      params: { trainable: 54_018_048, total: 9_295_724_032 },
+    })
+  }
+
   if (process.env.GROQ_API_KEY?.trim()) {
     models.push({
       id: 'groq-compound-mini',

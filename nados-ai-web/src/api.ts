@@ -166,27 +166,28 @@ export interface TrainingCenterData {
   }
 }
 
-export async function getTrainingCenter(): Promise<TrainingCenterData | null> {
+export async function getTrainingCenter(includeKaggle = false): Promise<TrainingCenterData | null> {
   try {
-    const [registryRes, statsRes, usageRes, kaggleRes] = await Promise.all([
+    const [registryRes, statsRes, usageRes] = await Promise.all([
       fetch('/api/training/registry', { signal: AbortSignal.timeout(8000) }),
       fetch('/api/training/stats', { signal: AbortSignal.timeout(8000) }),
       fetch('/api/providers/stats', { signal: AbortSignal.timeout(8000) }),
-      fetch('/api/training/kaggle/status', { signal: AbortSignal.timeout(240_000) }),
     ])
     if (!registryRes.ok || !statsRes.ok) return null
     const registry = await registryRes.json() as { providers: TrainingTeacher[]; trainingProvider: string }
     const stats = await statsRes.json() as { supabase: TrainingCenterData['supabase']; scheduler: TrainingCenterData['scheduler'] }
     const usage = usageRes.ok ? ((await usageRes.json() as { stats?: TrainingCenterData['usage'] }).stats || null) : null
-    const kaggle = kaggleRes.ok ? ((await kaggleRes.json() as TrainingCenterData['kaggle']) || undefined) : undefined
-    return {
+    const base: TrainingCenterData = {
       providers: registry.providers || [],
       trainingProvider: registry.trainingProvider,
       supabase: stats.supabase || { enabled: false },
       scheduler: stats.scheduler || { enabled: false, intervalMs: 0, lastRunAt: null, runs: 0 },
       usage,
-      kaggle,
     }
+    if (!includeKaggle) return base
+    const kaggleRes = await fetch('/api/training/kaggle/status', { signal: AbortSignal.timeout(120_000) })
+    base.kaggle = kaggleRes.ok ? ((await kaggleRes.json() as TrainingCenterData['kaggle']) || undefined) : undefined
+    return base
   } catch {
     return null
   }

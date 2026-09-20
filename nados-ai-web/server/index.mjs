@@ -15,7 +15,7 @@ import { capabilityReply, effectiveProviderMode, identityReply, isNadosCapabilit
 import { availableModels, resolveModelSelection } from './models.mjs'
 import { getConversations, getTrainingStats, saveConversation, saveTeacherOutput, saveTrainingExample, supabaseEnabled } from './supabaseStore.mjs'
 import { buildProviderRegistry, swarmLearn, newTrainingJob, TRAINING_PROVIDER_STATE } from './training/engine.mjs'
-import { callProvider } from './providers.mjs'
+import { callLocalNados, callProvider } from './providers.mjs'
 import { exportDatasetFromSupabase, kaggleEnabled, kernelLiveState, kernelStatus, pullKernelOutput, pushDataset, pushTrainingKernel, verifyKaggleCredentials } from './training/kaggleBridge.mjs'
 
 const app = express()
@@ -553,6 +553,15 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
       return
     }
 
+    if (selectedModel.providerId === 'nados-local') {
+      const local = await callLocalNados({ message, files: chatFiles, history, instructions, model: selectedModel.model })
+      sendEvent(response, { type: 'meta', provider: 'nados' })
+      for (let index = 0; index < local.text.length; index += 72) sendEvent(response, { type: 'delta', delta: local.text.slice(index, index + 72) })
+      sendEvent(response, { type: 'done', reply: { ...splitAnswer(local.text), sources: [], provider: 'nados', demo: false, usage: local.usage } })
+      saveConversation({ message, reply: local.text, mode: providerMode, provider: 'nados-local', sources: [] })
+      return response.end()
+    }
+
     if (selectedModel.providerId !== 'auto' && selectedModel.providerId !== 'openai') {
       const selected = await callSelectedProvider({ message, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions }, selectedModel.providerId, selectedModel.model)
       sendEvent(response, { type: 'meta', provider: 'nados' })
@@ -638,8 +647,8 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
     response.end()
   } catch (error) {
     const status = Number(error.status || 500)
-    const publicMessage = String(error.message || '').replace(/^(Gemini|Groq|NVIDIA NIM|NVIDIA|Cloudflare|Hugging Face|OpenRouter|OpenAI|المزوّد\s+\S+)\s*:\s*/u, '').trim()
-    const safeMessage = /^(Gemini|Groq|NVIDIA|Cloudflare|Hugging Face|OpenRouter|OpenAI|api\.)/i.test(publicMessage) || !publicMessage
+    const publicMessage = String(error.message || '').replace(/^(Gemini|Groq|NVIDIA NIM|NVIDIA|Cloudflare|Hugging Face|OpenRouter|OpenAI|Nados v1\.1|المزوّد\s+\S+)\s*:\s*/u, '').replace(/^NADOS_[A-Z_]+:\s*/, '').trim()
+    const safeMessage = /^(Gemini|Groq|NVIDIA|Cloudflare|Hugging Face|OpenRouter|OpenAI|api\.|fetch failed|NADOS_)/i.test(publicMessage) || !publicMessage
       ? 'خدمة الذكاء الاصطناعي مشغولة حالياً، جرّب مرة أخرى.'
       : publicMessage
     if (!response.headersSent) return response.status(status).json({ error: safeMessage })
