@@ -181,9 +181,13 @@ export async function pushTrainingKernel() {
 
 async function kaggleCli(args) {
   const env = { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' }
-  const { stdout, stderr } = await execFileAsync('python', ['-m', 'kaggle', ...args], { env, timeout: 180_000, maxBuffer: 20 * 1024 * 1024, windowsHide: true })
+  const { stdout, stderr } = await execFileAsync('python', ['-m', 'kaggle', ...args], { env, timeout: 600_000, maxBuffer: 20 * 1024 * 1024, windowsHide: true })
   return { stdout: stdout || '', stderr: stderr || '' }
 }
+
+let liveStateCache = null
+let liveStateCacheAt = 0
+const LIVE_STATE_CACHE_MS = 300_000
 
 export async function kernelStatus() {
   const config = kaggleConfig()
@@ -205,6 +209,7 @@ export async function kernelStatus() {
 export async function kernelLiveState() {
   const config = kaggleConfig()
   if (!config) return { state: 'WAITING_FOR_CREDENTIALS' }
+  if (liveStateCache && Date.now() - liveStateCacheAt < LIVE_STATE_CACHE_MS) return liveStateCache
   const status = await kernelStatus()
   const live = { ...status, paramsTrainable: null, paramsTotal: null, paramsPercent: null, stepsDone: null, stepsTotal: 120, gpu: null, done: false, logTail: [] }
   if (['running', 'complete', 'error'].includes(status.state)) {
@@ -231,6 +236,8 @@ export async function kernelLiveState() {
       console.log(`[kaggle-live] log pull failed: ${String(error?.message || error).slice(0, 150)}`)
     }
   }
+  liveStateCache = live
+  liveStateCacheAt = Date.now()
   return live
 }
 
