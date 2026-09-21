@@ -22,6 +22,7 @@ import {
   Mic,
   MonitorCog,
   Moon,
+  MoreHorizontal,
   Pause,
   Pin,
   Plus,
@@ -172,6 +173,7 @@ function AppV2() {
   const [sessionSearch, setSessionSearch] = useState('')
   const [chatSearchOpen, setChatSearchOpen] = useState(false)
   const [chatQuery, setChatQuery] = useState('')
+  const [moreMenuFor, setMoreMenuFor] = useState<string | null>(null)
   const [streamMeta, setStreamMeta] = useState<{ provider: string; model: string } | null>(null)
   const [history, setHistory] = useState<HistoryItem[]>(() => loadLocal('nados-history', initialHistory))
   const [spaces, setSpaces] = useState<Space[]>(() => loadLocal('nados-spaces', initialSpaces))
@@ -805,8 +807,19 @@ function AppV2() {
                   <RichAnswer answer={message.reply.answer} bullets={message.reply.bullets} />
                   {settings.citations && message.reply.sources.length > 0 && <div className="sources-block"><div className="sources-title"><strong>المصادر</strong><span>{message.reply.sources.length}</span></div><div className="source-grid">{message.reply.sources.map((source, sourceIndex) => <a key={`${source.domain}-${sourceIndex}`} href={source.url} target="_blank" rel="noreferrer"><i style={{ background: source.accent }}>{sourceIndex + 1}</i><strong>{source.title}</strong><span>{source.domain}</span></a>)}</div></div>}
                   <div className="answer-actions">
-                    <button className="icon-button" onClick={() => copyAnswer(message.reply!)} aria-label="نسخ الإجابة" title="نسخ"><Clipboard size={17} /></button><button className="icon-button" onClick={saveConversation} aria-label="حفظ في المكتبة" title="حفظ"><Bookmark size={17} /></button><button className="icon-button" onClick={() => speakAnswer(message.reply!)} aria-label={isSpeaking ? 'إيقاف القراءة' : 'قراءة الإجابة'} title={isSpeaking ? 'إيقاف القراءة' : 'استماع'}>{isSpeaking ? <Pause size={17} /> : <Volume2 size={17} />}</button><button className="icon-button" onClick={exportConversation} aria-label="تنزيل المحادثة" title="تنزيل"><Download size={17} /></button>
-                    {index === messages.length - 1 && <><span className="action-separator" /><button className="icon-button" onClick={() => void regenerate(message.id)} disabled={loading} aria-label="إعادة التوليد" title="إعادة التوليد"><RefreshCw size={17} /></button><button className={`icon-button ${feedback === 'up' ? 'selected' : ''}`} onClick={() => setFeedback('up')} aria-label="إجابة مفيدة" title="مفيدة"><ThumbsUp size={17} /></button><button className={`icon-button ${feedback === 'down' ? 'selected' : ''}`} onClick={() => setFeedback('down')} aria-label="إجابة غير مفيدة" title="غير مفيدة"><ThumbsDown size={17} /></button></>}
+                    <button className="icon-button" onClick={() => copyAnswer(message.reply!)} aria-label="نسخ الإجابة" title="نسخ"><Clipboard size={17} /></button>
+                    {index === messages.length - 1 && <button className="icon-button" onClick={() => void regenerate(message.id)} disabled={loading} aria-label="إعادة التوليد" title="إعادة التوليد"><RefreshCw size={17} /></button>}
+                    {index === messages.length - 1 && <><button className={`icon-button ${feedback === 'up' ? 'selected' : ''}`} onClick={() => setFeedback('up')} aria-label="إجابة مفيدة" title="مفيدة"><ThumbsUp size={17} /></button><button className={`icon-button ${feedback === 'down' ? 'selected' : ''}`} onClick={() => setFeedback('down')} aria-label="إجابة غير مفيدة" title="غير مفيدة"><ThumbsDown size={17} /></button></>}
+                    <span className="action-separator" />
+                    <button className="icon-button" onClick={() => setMoreMenuFor(moreMenuFor === message.id ? null : message.id)} aria-label="المزيد" title="المزيد"><MoreHorizontal size={17} /></button>
+                    {moreMenuFor === message.id && (
+                      <div className="actions-more-menu" role="menu">
+                        <button role="menuitem" onClick={() => { speakAnswer(message.reply!); setMoreMenuFor(null) }}><Volume2 size={15} /> قراءة الإجابة</button>
+                        <button role="menuitem" onClick={() => { saveConversation(); setMoreMenuFor(null) }}><Bookmark size={15} /> حفظ في المكتبة</button>
+                        <button role="menuitem" onClick={() => { exportConversation(); setMoreMenuFor(null) }}><Download size={15} /> تنزيل المحادثة</button>
+                        <button role="menuitem" onClick={() => { shareConversation(); setMoreMenuFor(null) }}><Share2 size={15} /> مشاركة</button>
+                      </div>
+                    )}
                   </div>
                 </div></div>
               );
@@ -818,7 +831,7 @@ function AppV2() {
                     <button type="button" className="thinking-panel__header" onClick={() => setReasoningOpen((value) => !value)} aria-expanded={reasoningOpen} aria-label="تبديل قسم التفكير">
                       <div className="thinking-panel__title">
                         <span className="thinking-panel__dot" />
-                        <span>التفكير</span>
+                        <span>{loading && !reply ? 'يفكر...' : 'التفكير'}</span>
                       </div>
                       <div className="thinking-panel__status">
                         <span className="thinking-wave"><span /><span /><span /></span>
