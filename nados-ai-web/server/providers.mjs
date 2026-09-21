@@ -10,9 +10,10 @@ const HUGE_MESSAGE_TOKENS = 90_000
 export async function callLocalNados({ message, files, history = [], instructions, model }) {
   const baseUrl = String(process.env.NADOS_LOCAL_LLM_URL || 'http://127.0.0.1:8080').trim().replace(/\/$/, '')
   try {
-    await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(4000) })
+    const health = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(8000) })
+    if (!health.ok) throw new Error(`HTTP ${health.status}`)
   } catch {
-    throw new Error(`NADOS_LOCAL_LLM_OFFLINE: خادم استدلال Nados v1.1 المحلي غير مشغّل على ${baseUrl} — شغّل llama-server بالأوزان المدرّبة أولاً.`)
+    throw new Error(`NADOS_LOCAL_LLM_OFFLINE: خادم استدلال Nados v1.1 غير مستجيب على ${baseUrl} — أعد تشغيل خلية الخادم في كولاب، وشغّل خلية التشخيص لرؤية سبب فشل llama-server.`)
   }
   const fittedHistory = fitHistoryToContext(history, historyCharacterBudget(model))
   const rawContent = compatibleContent(message, files)
