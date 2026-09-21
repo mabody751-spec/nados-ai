@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent, type RefObject } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type RefObject } from 'react'
 import {
   ArrowLeft,
   BrainCircuit,
@@ -12,6 +12,7 @@ import {
   Globe2,
   GraduationCap,
   Hammer,
+  ImageIcon,
   Mic,
   Paperclip,
   SearchCheck,
@@ -65,6 +66,9 @@ interface ComposerProps {
 export function Composer(props: ComposerProps) {
   const { Icon } = modeData[props.mode]
   const [dragOver, setDragOver] = useState(false)
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
+  const imageInput = useRef<HTMLInputElement>(null)
+  const docInput = useRef<HTMLInputElement>(null)
   const selectedModel = props.models.find((item) => item.id === props.model) || props.models[0] || {
     id: 'nados-v1', label: 'Nados v1.0', provider: 'توجيه تلقائي', model: 'أفضل نموذج متاح', providerId: 'auto', webSearch: true, vision: true, files: true,
   }
@@ -166,8 +170,33 @@ export function Composer(props: ComposerProps) {
             }
             event.target.value = ''
           }} />
-          <button className="icon-button" onClick={() => props.fileInput.current?.click()} aria-label="إرفاق ملف" title="إرفاق ملف"><Paperclip size={19} /></button>
-          <button className="icon-button" onClick={() => props.cameraInput.current?.click()} aria-label="التقاط صورة" title="الكاميرا"><Camera size={19} /></button>
+          <div className="attach-menu-wrap">
+            <button className="icon-button" onClick={() => setAttachMenuOpen((value) => !value)} aria-label="إرفاق" aria-expanded={attachMenuOpen} title="إرفاق"><Paperclip size={19} /></button>
+            {attachMenuOpen && (
+              <div className="attach-menu" role="menu">
+                <button role="menuitem" onClick={() => { props.fileInput.current?.click(); setAttachMenuOpen(false) }}><FileText size={16} /> إرفاق ملف</button>
+                <button role="menuitem" onClick={() => { imageInput.current?.click(); setAttachMenuOpen(false) }}><ImageIcon size={16} /> صورة</button>
+                <button role="menuitem" onClick={() => { props.cameraInput.current?.click(); setAttachMenuOpen(false) }}><Camera size={16} /> كاميرا</button>
+                <button role="menuitem" onClick={() => { docInput.current?.click(); setAttachMenuOpen(false) }}><FileText size={16} /> مستند</button>
+              </div>
+            )}
+          </div>
+          <input ref={imageInput} type="file" accept="image/*" hidden multiple onChange={(event) => {
+            const chosen = Array.from(event.target.files || [])
+            for (const file of chosen) {
+              if (props.acceptFile) props.acceptFile(file)
+              else props.setSelectedFiles((current) => current.length >= 5 ? current : [...current, file])
+            }
+            event.target.value = ''
+          }} />
+          <input ref={docInput} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv" hidden multiple onChange={(event) => {
+            const chosen = Array.from(event.target.files || [])
+            for (const file of chosen) {
+              if (props.acceptFile) props.acceptFile(file)
+              else props.setSelectedFiles((current) => current.length >= 5 ? current : [...current, file])
+            }
+            event.target.value = ''
+          }} />
           <div className="mode-select">
             <button onClick={() => { props.setModeOpen(!props.modeOpen); props.setModelOpen(false) }}><Icon size={15} /><span className="control-label">{modeData[props.mode].label}</span><ChevronDown size={13} /></button>
             {props.modeOpen && (
