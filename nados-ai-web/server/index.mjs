@@ -554,35 +554,45 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
     }
 
     if (selectedModel.providerId === 'nados') {
-      let localResult = null
+      // السرعة أولاً: المعلمون السريعون → النموذج المحلي المدرَّب احتياطاً
+      let externalResult = null
       try {
-        localResult = await callLocalNados({ message, files: chatFiles, history, instructions, model: selectedModel.model })
+        externalResult = await callExternalProviders({ message, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions })
       } catch {}
-      if (localResult) {
+      if (externalResult?.text) {
+        sendEvent(response, { type: 'meta', provider: 'nados' })
+        for (let index = 0; index < externalResult.text.length; index += 72) {
+          sendEvent(response, { type: 'delta', delta: externalResult.text.slice(index, index + 72) })
+        }
+        sendEvent(response, {
+          type: 'done',
+          reply: {
+            ...splitAnswer(externalResult.text),
+            sources: decorateSources(externalResult.sources),
+            provider: 'nados',
+            demo: false,
+            usage: externalResult.usage,
+          },
+        })
+        saveConversation({ message, reply: externalResult.text, mode: providerMode, provider: externalResult.provider, sources: externalResult.sources || [] })
+        return response.end()
+      }
+      try {
+        const localResult = await callLocalNados({ message, files: chatFiles, history, instructions, model: selectedModel.model })
         sendEvent(response, { type: 'meta', provider: 'nados' })
         for (let index = 0; index < localResult.text.length; index += 72) sendEvent(response, { type: 'delta', delta: localResult.text.slice(index, index + 72) })
         sendEvent(response, { type: 'done', reply: { ...splitAnswer(localResult.text), sources: [], provider: 'nados', demo: false, usage: localResult.usage } })
         saveConversation({ message, reply: localResult.text, mode: providerMode, provider: 'nados-local', sources: [] })
         return response.end()
-      }
-      const external = await callExternalProviders({ message, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions })
-      if (external?.text) {
-        sendEvent(response, { type: 'meta', provider: 'nados' })
-        for (let index = 0; index < external.text.length; index += 72) {
-          sendEvent(response, { type: 'delta', delta: external.text.slice(index, index + 72) })
+      } catch (localError) {
+        const message2 = String(localError?.message || '')
+        if (/NADOS_LOCAL_LLM_OFFLINE/.test(message2)) {
+          // لا معلمون ولا نموذج محلي — رد صادق
+          sendEvent(response, { type: 'meta', provider: 'nados' })
+          sendEvent(response, { type: 'error', message: 'Nados v1.1 غير متصل حالياً: المعلمون مشغولون والنموذج المحلي متوقف. جرّب مرة أخرى بعد لحظات.' })
+          return response.end()
         }
-        sendEvent(response, {
-          type: 'done',
-          reply: {
-            ...splitAnswer(external.text),
-            sources: decorateSources(external.sources),
-            provider: 'nados',
-            demo: false,
-            usage: external.usage,
-          },
-        })
-        saveConversation({ message, reply: external.text, mode: providerMode, provider: external.provider, sources: external.sources || [] })
-        return response.end()
+        throw localError
       }
     }
 
