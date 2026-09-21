@@ -553,6 +553,39 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
       return
     }
 
+    if (selectedModel.providerId === 'nados') {
+      let localResult = null
+      try {
+        localResult = await callLocalNados({ message, files: chatFiles, history, instructions, model: selectedModel.model })
+      } catch {}
+      if (localResult) {
+        sendEvent(response, { type: 'meta', provider: 'nados' })
+        for (let index = 0; index < localResult.text.length; index += 72) sendEvent(response, { type: 'delta', delta: localResult.text.slice(index, index + 72) })
+        sendEvent(response, { type: 'done', reply: { ...splitAnswer(localResult.text), sources: [], provider: 'nados', demo: false, usage: localResult.usage } })
+        saveConversation({ message, reply: localResult.text, mode: providerMode, provider: 'nados-local', sources: [] })
+        return response.end()
+      }
+      const external = await callExternalProviders({ message, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions })
+      if (external?.text) {
+        sendEvent(response, { type: 'meta', provider: 'nados' })
+        for (let index = 0; index < external.text.length; index += 72) {
+          sendEvent(response, { type: 'delta', delta: external.text.slice(index, index + 72) })
+        }
+        sendEvent(response, {
+          type: 'done',
+          reply: {
+            ...splitAnswer(external.text),
+            sources: decorateSources(external.sources),
+            provider: 'nados',
+            demo: false,
+            usage: external.usage,
+          },
+        })
+        saveConversation({ message, reply: external.text, mode: providerMode, provider: external.provider, sources: external.sources || [] })
+        return response.end()
+      }
+    }
+
     if (selectedModel.providerId === 'nados-local') {
       const local = await callLocalNados({ message, files: chatFiles, history, instructions, model: selectedModel.model })
       sendEvent(response, { type: 'meta', provider: 'nados' })

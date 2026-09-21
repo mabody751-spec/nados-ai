@@ -1,4 +1,4 @@
-const API_TARGET = 'https://pink-deer-wagon-biography.trycloudflare.com'
+const API_TARGET = 'https://musicians-int-representatives-barbara.trycloudflare.com'
 
 export default {
   async fetch(request, env) {

@@ -1,25 +1,17 @@
 export function availableModels() {
-  const models = [{
-    id: 'nados-v1',
-    label: 'Nados v1.0',
-    providerId: 'auto',
-    provider: 'Nados',
-    model: 'أفضل نموذج متاح — توجيه تلقائي',
-    webSearch: true,
-    vision: true,
-    files: true,
-  }]
+  const models = []
 
   if (process.env.NADOS_LOCAL_LLM_URL?.trim() || process.env.KAGGLE_TRAINING_DONE === '1') {
     models.push({
-      id: 'nados-v1-1',
+      id: 'nados',
       label: 'Nados v1.1',
-      providerId: 'nados-local',
+      providerId: 'nados',
       provider: 'Nados',
-      model: 'gemma-2-9b-it + LoRA Nados (QLoRA 120 steps)',
-      webSearch: false,
-      vision: false,
-      files: false,
+      model: 'المدرَّب + المعلمون — دمج تلقائي',
+      webSearch: true,
+      vision: true,
+      files: true,
+      contextWindow: 1_000_000,
       params: { trainable: 54_018_048, total: 9_295_724_032 },
     })
   }
@@ -47,6 +39,20 @@ export function availableModels() {
       webSearch: false,
       vision: false,
       files: false,
+    })
+  }
+
+  if (!models.some((item) => item.id === 'nados')) {
+    models.unshift({
+      id: 'nados',
+      label: 'Nados v1.0',
+      providerId: 'nados',
+      provider: 'Nados',
+      model: 'المعلمون — توجيه تلقائي',
+      webSearch: true,
+      vision: true,
+      files: true,
+      contextWindow: 1_000_000,
     })
   }
 

@@ -41,7 +41,7 @@ export async function callLocalNados({ message, files, history = [], instruction
       prompt: usage?.prompt_tokens ?? null,
       completion: usage?.completion_tokens ?? null,
       total: usage?.total_tokens ?? null,
-      contextWindow: modelTokenLimits(model).context,
+      contextWindow: 1_000_000,
     },
   }
 }

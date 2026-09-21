@@ -23,6 +23,7 @@ import {
   Zap,
 } from 'lucide-react'
 import type { ModelId, NadosModelOption, SearchMode } from './api'
+import { formatTokens } from './api'
 import { MAX_MESSAGE_CHARS } from './limits'
 
 export const modeData: Record<SearchMode, { label: string; description: string; Icon: typeof Globe2 }> = {
@@ -238,7 +239,7 @@ export function Composer(props: ComposerProps) {
                           return (
                             <button key={item.id} type="button" role="option" aria-selected={props.model === item.id} className={props.model === item.id ? 'selected' : ''} onClick={() => { props.setModel(item.id); props.setModelOpen(false) }}>
                               <span className="model-option-icon"><ModelIcon size={10} /></span>
-                              <span><strong dir="auto">{item.label}</strong><small>{item.webSearch ? 'ويب' : ''}{item.vision ? item.webSearch ? ' · رؤية' : 'رؤية' : ''}{item.files ? (item.webSearch || item.vision ? ' · ملفات' : 'ملفات') : ''}</small></span>
+                              <span><strong dir="auto">{item.label}</strong><small>{item.webSearch ? 'ويب' : ''}{item.vision ? item.webSearch ? ' · رؤية' : 'رؤية' : ''}{item.files ? (item.webSearch || item.vision ? ' · ملفات' : 'ملفات') : ''}{item.contextWindow ? ` · سياق ${formatTokens(item.contextWindow)}` : ''}</small></span>
                               {props.model === item.id && <Check size={14} />}
                             </button>
                           )

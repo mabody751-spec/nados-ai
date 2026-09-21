@@ -10,6 +10,8 @@ export interface NadosModelOption {
   webSearch: boolean
   vision: boolean
   files: boolean
+  contextWindow?: number
+  params?: { trainable: number; total: number }
 }
 
 export interface Source {
