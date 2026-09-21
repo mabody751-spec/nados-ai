@@ -435,6 +435,9 @@ kbd { border: 1px solid #454d46; border-radius: 4px; color: #8f9891; padding: 2p
 .model-menu-heading strong { font-size: 11px; }
 .model-menu-heading small { color: var(--muted); font-size: 8px; }
 .model-menu-section { padding-top: 6px; }
+.model-menu-section.nados-section { background: rgb(var(--mint-rgb) / 0.06); border-radius: 12px; margin: 4px 6px; }
+.model-menu-section.nados-section .model-menu-section-header strong { color: var(--mint-dark); }
+:root[data-theme='dark'] .model-menu-section.nados-section .model-menu-section-header strong { color: var(--mint); }
 .model-menu-section-header {
   display: flex;
   align-items: center;

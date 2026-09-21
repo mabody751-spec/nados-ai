@@ -186,18 +186,19 @@ export function Composer(props: ComposerProps) {
             </button>
             {props.modelOpen && (
               <div className="model-menu" role="listbox" aria-label="نماذج Nados المتاحة">
-                <div className="model-menu-heading"><strong>Nados v1.0</strong><small>{props.models.length} نموذج متاح</small></div>
+                <div className="model-menu-heading"><strong>نماذج Nados</strong><small>{props.models.length} نموذج متاح</small></div>
                 {Object.entries(props.models.reduce<Record<string, typeof props.models[number][]>>((groups, item) => {
                   const key = item.provider || 'أخرى'
                   groups[key] = groups[key] || []
                   groups[key].push(item)
                   return groups
                 }, {}))
-                  .sort(([leftProvider], [rightProvider]) => leftProvider.localeCompare(rightProvider, 'ar'))
+                  .sort(([leftProvider], [rightProvider]) => Number(rightProvider === 'Nados') - Number(leftProvider === 'Nados') || leftProvider.localeCompare(rightProvider, 'ar'))
                   .map(([provider, items]) => (
-                    <div className="model-menu-section" key={provider}>
+
+                    <div className={`model-menu-section ${provider === 'Nados' ? 'nados-section' : ''}`} key={provider}>
                       <div className="model-menu-section-header">
-                        <strong>{provider === 'توجيه تلقائي' ? 'Nados' : provider}</strong>
+                        <strong>{provider === 'Nados' ? 'Nados — نموذجنا المدرَّب' : provider}</strong>
                         <small>{items.length} نموذج</small>
                       </div>
                       {items

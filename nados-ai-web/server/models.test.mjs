@@ -3,13 +3,15 @@ import assert from 'node:assert/strict'
 import { availableModels, resolveModelSelection } from './models.mjs'
 
 test('publishes only the unified Nados v1.0 model option', () => {
+  delete process.env.NADOS_LOCAL_LLM_URL
+  delete process.env.KAGGLE_TRAINING_DONE
   const models = availableModels()
   assert.deepEqual(models, [{
     id: 'nados-v1',
     label: 'Nados v1.0',
     providerId: 'auto',
-    provider: 'توجيه تلقائي',
-    model: 'أفضل نموذج متاح',
+    provider: 'Nados',
+    model: 'أفضل نموذج متاح — توجيه تلقائي',
     webSearch: true,
     vision: true,
     files: true,
