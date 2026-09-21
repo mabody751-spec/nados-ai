@@ -1,7 +1,9 @@
 :root {
-  font-family: 'Segoe UI', 'Noto Naskh Arabic', 'Noto Sans Arabic', Tahoma, -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Cairo', 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   color: #17191c;
   background: #f7f8fa;
+  font-size: 16px;
+  line-height: 1.8;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --bg: #f7f8fa;
@@ -16,9 +18,9 @@
   --sidebar: #17181a;
   --sidebar-2: #222429;
   --sidebar-text: #e5e7eb;
-  --mint: #35b8a9;
-  --mint-rgb: 53 184 169;
-  --mint-dark: #197e73;
+  --mint: #14B8A6;
+  --mint-rgb: 20 184 166;
+  --mint-dark: #0D9488;
   --coral: #eb654b;
   --coral-rgb: 235 101 75;
   --amber: #d97706;
@@ -35,17 +37,17 @@
 :root[data-theme='dark'] {
   color: #e5e7eb;
   background: #0d0f13;
-  --bg: #101318;
-  --bg-strong: #16191f;
-  --panel: #1b1f25;
-  --panel-soft: #23272e;
-  --panel-strong: #2c313a;
-  --panel-elevated: rgba(27, 31, 37, 0.82);
-  --ink: #e8eaed;
-  --muted: #9aa1ab;
-  --line: #2b3038;
-  --sidebar: #0d0f13;
-  --sidebar-2: #191d24;
+  --bg: #0F0F0F;
+  --bg-strong: #161616;
+  --panel: #1A1A1A;
+  --panel-soft: #242424;
+  --panel-strong: #2E2E2E;
+  --panel-elevated: rgba(26, 26, 26, 0.85);
+  --ink: #ECEDEE;
+  --muted: #9CA3AF;
+  --line: #2C2C2C;
+  --sidebar: #0F0F0F;
+  --sidebar-2: #1A1A1A;
   --sidebar-text: #e5e7eb;
   --soft-mint: rgb(var(--mint-rgb) / 0.14);
   --soft-blue: rgb(var(--blue-rgb) / 0.14);
