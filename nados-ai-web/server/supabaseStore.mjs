@@ -127,18 +127,24 @@ export async function getTrainingStats() {
   const config = supabaseConfig()
   if (!config) return { enabled: false }
   try {
-    const [outputsRes, examplesRes] = await Promise.all([
-      fetch(`${config.url}/rest/v1/teacher_outputs?select=accepted`, { headers: { Authorization: `Bearer ${config.key}`, apikey: config.key }, signal: AbortSignal.timeout(SELECT_TIMEOUT) }),
-      fetch(`${config.url}/rest/v1/training_examples?select=id&order=created_at.desc&limit=200`, { headers: { Authorization: `Bearer ${config.key}`, apikey: config.key }, signal: AbortSignal.timeout(SELECT_TIMEOUT) }),
+    const [outputsRes, examplesRes, acceptedRes] = await Promise.all([
+      fetch(`${config.url}/rest/v1/teacher_outputs?select=accepted`, { headers: { Authorization: `Bearer ${config.key}`, apikey: config.key, Prefer: 'count=exact', Range: '0-0' }, signal: AbortSignal.timeout(SELECT_TIMEOUT) }),
+      fetch(`${config.url}/rest/v1/training_examples?select=id`, { headers: { Authorization: `Bearer ${config.key}`, apikey: config.key, Prefer: 'count=exact', Range: '0-0' }, signal: AbortSignal.timeout(SELECT_TIMEOUT) }),
+      fetch(`${config.url}/rest/v1/teacher_outputs?select=id&accepted=eq.true`, { headers: { Authorization: `Bearer ${config.key}`, apikey: config.key, Prefer: 'count=exact', Range: '0-0' }, signal: AbortSignal.timeout(SELECT_TIMEOUT) }),
     ])
     const outputs = outputsRes.ok ? await outputsRes.json().catch(() => []) : []
     const examples = examplesRes.ok ? await examplesRes.json().catch(() => []) : []
-    const accepted = Array.isArray(outputs) ? outputs.filter((item) => item.accepted).length : 0
+    const outputsRange = outputsRes.headers.get('content-range') || ''
+    const outputsExact = Number(outputsRange.split('/')[1]) || (Array.isArray(outputs) ? outputs.length : 0)
+    const examplesRange = examplesRes.headers.get('content-range') || ''
+    const examplesExact = Number(examplesRange.split('/')[1]) || (Array.isArray(examples) ? examples.length : 0)
+    const acceptedRange = acceptedRes.headers.get('content-range') || ''
+    const acceptedExact = Number(acceptedRange.split('/')[1]) || 0
     return {
       enabled: true,
-      outputsTotal: Array.isArray(outputs) ? outputs.length : 0,
-      outputsAccepted: accepted,
-      examplesTotal: Array.isArray(examples) ? examples.length : 0,
+      outputsTotal: outputsExact,
+      outputsAccepted: acceptedExact,
+      examplesTotal: examplesExact,
     }
   } catch {
     return { enabled: false }
