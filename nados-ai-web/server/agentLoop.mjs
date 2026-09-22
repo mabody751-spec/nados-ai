@@ -4,6 +4,34 @@ import { modeInstructions } from './instructions.mjs'
 import { getMode, modeToolsAllowed, modeAllowsFile } from './modes.mjs'
 
 export const MAX_STEPS = 50
+export const MAX_AUTO_FIX_ATTEMPTS = 3
+
+export async function verifyProject(onEvent = () => {}) {
+  const { existsSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const root = process.env.NADOS_SANDBOX_ROOT || 'D:/nadosai'
+  const projectDir = join(root, 'nados-ai-web')
+  const results = []
+  if (existsSync(join(projectDir, 'package.json'))) {
+    for (const [label, cmd] of [['test', 'npm test'], ['build', 'npm run build']]) {
+      onEvent({ type: 'verify_started', label, cmd })
+      try {
+        const { execFile } = await import('node:child_process')
+        const { promisify } = await import('node:util')
+        const { stdout, stderr } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-Command', `Set-Location '${projectDir}'; ${cmd}`], { timeout: 300_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true })
+        const output = (stdout || stderr || '')
+        const failed = label === 'test' ? /# fail [1-9]|fail \d+\)/.test(output) : false
+        const passed = !failed && (label === 'test' ? /# pass \d+/.test(output) : true)
+        results.push({ label, cmd, passed, failed, output: output.slice(-600) })
+        onEvent({ type: failed ? 'verify_failed' : 'verify_passed', label })
+      } catch (error) {
+        results.push({ label, cmd, passed: false, failed: true, output: String(error?.message || error).slice(-600) })
+        onEvent({ type: 'verify_failed', label })
+      }
+    }
+  }
+  return { results, allPassed: results.length > 0 && results.every((item) => item.passed) }
+}
 
 const AGENT_SYSTEM_PROMPT = (slug = 'code') => {
   const mode = getMode(slug)

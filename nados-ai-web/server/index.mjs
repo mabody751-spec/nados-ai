@@ -16,7 +16,7 @@ import { availableModels, resolveModelSelection } from './models.mjs'
 import { getConversations, getTrainingStats, saveConversation, saveTeacherOutput, saveTrainingExample, supabaseEnabled } from './supabaseStore.mjs'
 import { buildProviderRegistry, swarmLearn, newTrainingJob, TRAINING_PROVIDER_STATE } from './training/engine.mjs'
 import { callLocalNados, callProvider } from './providers.mjs'
-import { runAgentLoop } from './agentLoop.mjs'
+import { runAgentLoop, verifyProject, MAX_AUTO_FIX_ATTEMPTS } from './agentLoop.mjs'
 import { task as runSubagentTask, board_post, board_read, subagentCount } from './subagents.mjs'
 import { deepResearch } from './deepResearch.mjs'
 import { exportDatasetFromSupabase, kaggleEnabled, kernelLiveState, kernelStatus, pullKernelOutput, pushDataset, pushTrainingKernel, verifyKaggleCredentials } from './training/kaggleBridge.mjs'
@@ -363,7 +363,32 @@ app.post('/api/agent/run', requireLocalOrigin, async (request, response) => {
       return response.end()
     }
     const result = await runAgentLoop({ task, mode: mode || 'create', onEvent: sendEvent })
-    sendEvent({ type: 'agent_complete', summary: result.summary, filesChanged: result.filesChanged, steps: result.steps, durationMs: result.durationMs })
+    sendEvent({ type: 'task_summary', filesChanged: result.filesChanged, steps: result.steps })
+
+    // التحقق التلقائي + الإصلاح الذاتي (حد 3 محاولات)
+    let verification = null
+    let finalSummary = result.summary
+    if (result.filesChanged?.length) {
+      let autoFixAttempts = 0
+      verification = await verifyProject(sendEvent)
+      while (!verification.allPassed && autoFixAttempts < MAX_AUTO_FIX_ATTEMPTS) {
+        autoFixAttempts += 1
+        sendEvent({ type: 'auto_fix_attempt', attempt: autoFixAttempts, max: MAX_AUTO_FIX_ATTEMPTS })
+        const failures = verification.results.filter((item) => item.failed).map((item) => `${item.label}: ${item.output.slice(-400)}`).join('\n')
+        try {
+          const fixResult = await runAgentLoop({ task: `أخطرت عمليات التحقق التالية في المشروع:\n${failures}\n\nاقرأ الملفات المعنية، أصلح الأخطاء، وتأكد من الإصلاح.`, mode: 'debug', onEvent: sendEvent })
+          if (fixResult.filesChanged?.length) {
+            verification = await verifyProject(sendEvent)
+            if (verification.allPassed) finalSummary = `${result.summary}\n\n(أُصلحت الأخطاء تلقائياً بعد ${autoFixAttempts} محاولة ✓)`
+          }
+        } catch (fixError) {
+          sendEvent({ type: 'error', message: `فشل محاولة الإصلاح ${autoFixAttempts}: ${String(fixError?.message || fixError).slice(0, 150)}` })
+        }
+      }
+    }
+
+    const done = verification ? (verification.allPassed ? 'completed' : 'completed_with_warnings') : 'completed'
+    sendEvent({ type: 'agent_complete', status: done, summary: finalSummary, filesChanged: result.filesChanged, steps: result.steps, durationMs: result.durationMs, verification: verification?.results?.map((item) => ({ label: item.label, passed: item.passed })) })
     response.end()
   } catch (error) {
     sendEvent({ type: 'error', message: String(error?.message || error).slice(0, 250) })
