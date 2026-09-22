@@ -39,6 +39,7 @@ import {
   ThumbsUp,
   Trash2,
   Volume2,
+  Zap,
   X,
 } from 'lucide-react'
 import { askNados, formatTokens, getNadosCapabilities, getNadosModels, synthesizeNadosSpeech, type ApiCapabilities, type ChatReply, type ConversationMessage, type ModelId, type NadosModelOption, type SearchMode } from './api'
@@ -704,7 +705,9 @@ function AppV2() {
   const updateSettings = (next: Partial<AppSettings>) => setSettings((current) => ({ ...current, ...next }))
   const selectedModel = models.find((item) => item.id === model) || automaticModel
   const composerProps = { query, setQuery, onSubmit: () => submit(), mode, setMode, model, models, setModel, modelOpen, setModelOpen, modeOpen, setModeOpen, fileInput, cameraInput, selectedFiles, setSelectedFiles, textarea, startVoice: startDictation, listening, loading, onStop: stopGeneration, enableSearch: enableSearch || mode === 'web', enableThinking, setEnableSearch: (value: boolean) => { setEnableSearch(value); setMode(value ? 'web' : 'create') }, setEnableThinking }
-  const viewTitles: Partial<Record<View, string>> = { chat: 'محادثة', discover: 'استكشف', library: 'المكتبة', spaces: 'المساحات', studio: 'إنشاء الصور', computer: 'التحكم بالكمبيوتر', connectors: 'التطبيقات المتصلة', training: 'مركز التدريب', agents: 'مركز الوكلاء' }
+  const viewTitles: Partial<Record<View, string>> = { chat: 'محادثة', discover: 'استكشف', library: 'المكتبة', spaces: 'المساحات', studio: 'إنشاء الصور', computer: 'التحكم بالكمبيوتر', connectors: 'التطبيقات المتصلة', training: 'مركز التدريب', agents: 'مركز الوكلاء', work: 'العمل' }
+
+  const workspaceMode = view === 'chat' || view === 'home' || view === 'discover' || view === 'library' || view === 'spaces' || view === 'studio' ? 'chat' : 'work'
 
   return (
     <div className="app-shell">
@@ -752,7 +755,10 @@ function AppV2() {
       <main className="main-content">
         <header className="topbar">
           <button className="icon-button menu-button" onClick={() => setSidebarOpen(true)} aria-label="فتح القائمة" title="القائمة"><Menu size={21} /></button>
-          <div className="topbar-title">{viewTitles[view] && <span>{viewTitles[view]}</span>}{settings.incognito && <span className="incognito-label"><EyeOff size={14} /> خفي</span>}</div>
+          <div className="workspace-toggle" role="tablist" aria-label="وضع المنصة">
+            <button className={workspaceMode === 'chat' ? 'active' : ''} onClick={() => navigate(workspaceMode === 'chat' ? 'chat' : 'home')} role="tab" aria-selected={workspaceMode === 'chat'}>المحادثة</button>
+            <button className={workspaceMode === 'work' ? 'active' : ''} onClick={() => navigate('work')} role="tab" aria-selected={workspaceMode === 'work'}><Zap size={14} /> العمل</button>
+          </div>          <div className="topbar-title">{viewTitles[view] && <span>{viewTitles[view]}</span>}{settings.incognito && <span className="incognito-label"><EyeOff size={14} /> خفي</span>}</div>
           <div className="topbar-actions">
             {view === 'chat' && <button className="icon-button" onClick={shareConversation} aria-label="مشاركة" title="مشاركة"><Share2 size={18} /></button>}
             {view === 'chat' && <button className="icon-button" onClick={() => setChatSearchOpen((value) => !value)} aria-label="بحث في المحادثة" title="بحث في المحادثة"><SearchCheck size={19} /></button>}
