@@ -5,6 +5,7 @@ import {
   Archive,
   BookOpen,
   Bookmark,
+  Bot,
   Boxes,
   BrainCircuit,
   Check,
@@ -44,6 +45,7 @@ import { askNados, formatTokens, getNadosCapabilities, getNadosModels, synthesiz
 import { Composer, modeData } from './Composer'
 import { ComputerView, ConnectorsView, DiscoverView, LibraryView, SettingsPanel, SpacesView, StudioView, VoiceDialog } from './FeatureViews'
 import { TrainingCenter } from './TrainingCenter'
+import { AgentManager } from './AgentManager'
 import { initialHistory, initialSpaces, type AppSettings, type HistoryItem, type Space, type View } from './types'
 import { countWords, MAX_CONVERSATION_CHARS, MAX_CONVERSATION_WORDS, MAX_MESSAGE_CHARS, MAX_MESSAGE_WORDS } from './limits'
 import { RichAnswer } from './RichAnswer'
@@ -702,7 +704,7 @@ function AppV2() {
   const updateSettings = (next: Partial<AppSettings>) => setSettings((current) => ({ ...current, ...next }))
   const selectedModel = models.find((item) => item.id === model) || automaticModel
   const composerProps = { query, setQuery, onSubmit: () => submit(), mode, setMode, model, models, setModel, modelOpen, setModelOpen, modeOpen, setModeOpen, fileInput, cameraInput, selectedFiles, setSelectedFiles, textarea, startVoice: startDictation, listening, loading, onStop: stopGeneration, enableSearch: enableSearch || mode === 'web', enableThinking, setEnableSearch: (value: boolean) => { setEnableSearch(value); setMode(value ? 'web' : 'create') }, setEnableThinking }
-  const viewTitles: Partial<Record<View, string>> = { chat: 'محادثة', discover: 'استكشف', library: 'المكتبة', spaces: 'المساحات', studio: 'إنشاء الصور', computer: 'التحكم بالكمبيوتر', connectors: 'التطبيقات المتصلة', training: 'مركز التدريب' }
+  const viewTitles: Partial<Record<View, string>> = { chat: 'محادثة', discover: 'استكشف', library: 'المكتبة', spaces: 'المساحات', studio: 'إنشاء الصور', computer: 'التحكم بالكمبيوتر', connectors: 'التطبيقات المتصلة', training: 'مركز التدريب', agents: 'مركز الوكلاء' }
 
   return (
     <div className="app-shell">
@@ -719,6 +721,7 @@ function AppV2() {
           <button className={view === 'computer' ? 'active' : ''} onClick={() => navigate('computer')}><MonitorCog size={18} /><span>الكمبيوتر</span></button>
           <button className={view === 'connectors' ? 'active' : ''} onClick={() => navigate('connectors')}><PlugZap size={18} /><span>التطبيقات المتصلة</span></button>
           {['localhost', '127.0.0.1', '::1'].includes(window.location.hostname) && <button className={view === 'training' ? 'active' : ''} onClick={() => navigate('training')}><BrainCircuit size={18} /><span>مركز التدريب</span></button>}
+          {['localhost', '127.0.0.1', '::1'].includes(window.location.hostname) && <button className={view === 'agents' ? 'active' : ''} onClick={() => navigate('agents')}><Bot size={18} /><span>مركز الوكلاء</span></button>}
         </nav>
         <div className="recent"><div className="section-label"><span>الجلسات</span><small>{sessions.length}</small></div>
           {sessions.length > 3 && (
@@ -859,6 +862,7 @@ function AppV2() {
 
         {view === 'discover' && <DiscoverView onAsk={submit} />}
         {view === 'training' && <TrainingCenter />}
+        {view === 'agents' && <AgentManager />}
         {view === 'library' && <LibraryView history={history} spaces={spaces} onOpen={openCurrentSession} />}
         {view === 'spaces' && <SpacesView spaces={spaces} setSpaces={setSpaces} onAsk={submit} />}
         {view === 'studio' && <StudioView connected={capabilities.features.images} />}
