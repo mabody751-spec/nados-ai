@@ -328,7 +328,7 @@ kbd { border: 1px solid #454d46; border-radius: 4px; color: #8f9891; padding: 2p
   box-shadow: var(--shadow-soft);
   transition: border-color .18s ease;
 }
-:root[data-theme='dark'] .composer { background: #1c1f24; border-color: #2e333b; }
+:root[data-theme='dark'] .composer { background: #1A1A1A; border-color: #2C2C2C; }
 .composer:focus-within {
   border-color: rgb(var(--mint-rgb) / 0.5);
 }
