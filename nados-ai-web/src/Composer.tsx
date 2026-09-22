@@ -62,6 +62,10 @@ interface ComposerProps {
   loading?: boolean
   onStop?: () => void
   acceptFile?: (file: File) => void
+  enableSearch?: boolean
+  enableThinking?: boolean
+  setEnableSearch?: (value: boolean) => void
+  setEnableThinking?: (value: boolean) => void
 }
 
 export function Composer(props: ComposerProps) {
@@ -198,6 +202,22 @@ export function Composer(props: ComposerProps) {
             }
             event.target.value = ''
           }} />
+          <div className="composer-toggles">
+            <button
+              className={`composer-toggle ${props.enableSearch ? 'active' : ''}`}
+              onClick={() => props.setEnableSearch?.(!props.enableSearch)}
+              aria-pressed={props.enableSearch}
+              aria-label="تفعيل البحث"
+              title="بحث (يتصل بالإنترنت)"
+            ><Globe2 size={15} /><span>بحث</span></button>
+            <button
+              className={`composer-toggle ${props.enableThinking ? 'active' : ''}`}
+              onClick={() => props.setEnableThinking?.(!props.enableThinking)}
+              aria-pressed={props.enableThinking}
+              aria-label="تفعيل التفكير"
+              title="تفكير عميق خطوة بخطوة"
+            ><BrainCircuit size={15} /><span>تفكير</span></button>
+          </div>
           <div className="mode-select">
             <button onClick={() => { props.setModeOpen(!props.modeOpen); props.setModelOpen(false) }}><Icon size={15} /><span className="control-label">{modeData[props.mode].label}</span><ChevronDown size={13} /></button>
             {props.modeOpen && (

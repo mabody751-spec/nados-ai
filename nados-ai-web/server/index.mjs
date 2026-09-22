@@ -539,8 +539,11 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
     }
     const chatFiles = request.files || []
     const primaryFile = chatFiles.find((item) => item.mimetype?.startsWith('image/')) || chatFiles[0] || null
+    const enableThinking = request.body?.thinking === 'true'
     const providerMode = effectiveProviderMode(mode, message, Boolean(chatFiles.length))
-    const instructions = modeInstructions(providerMode, features, chatFiles[0] || null)
+    const instructions = enableThinking
+      ? `${modeInstructions(providerMode, features, chatFiles[0] || null)}\n\nفكّر خطوة بخطوة داخلياً قبل الإجابة: حلل الطلب، قسّمه، ثم قدّم إجابة دقيقة ومنظمة.`
+      : modeInstructions(providerMode, features, chatFiles[0] || null)
     const selectedModel = resolveModelSelection(model)
 
     if (isNadosIdentityQuestion(message)) {

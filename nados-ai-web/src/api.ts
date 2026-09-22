@@ -303,11 +303,13 @@ export async function askNados(
   history: ConversationMessage[] = [],
   signal?: AbortSignal,
   onMeta?: (provider: string, modelLabel: string) => void,
+  options?: { enableThinking?: boolean },
 ): Promise<ChatReply> {
   const form = new FormData()
   form.set('message', question)
   form.set('mode', mode)
   form.set('model', model)
+  if (options?.enableThinking) form.set('thinking', 'true')
   if (history.length) form.set('history', JSON.stringify(history))
   const fileList = Array.isArray(files) ? files : files ? [files] : []
   for (const file of fileList) form.append('files', file, file.name)

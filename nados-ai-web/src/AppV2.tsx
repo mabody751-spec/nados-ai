@@ -148,6 +148,7 @@ function AppV2() {
   const [sessionReady, setSessionReady] = useState(false)
   const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mode, setMode] = useState<SearchMode>('web')
   const [model, setModel] = useState<ModelId>('nados-v1')
   const [models, setModels] = useState<NadosModelOption[]>([automaticModel])
@@ -174,6 +175,8 @@ function AppV2() {
   const [chatSearchOpen, setChatSearchOpen] = useState(false)
   const [chatQuery, setChatQuery] = useState('')
   const [moreMenuFor, setMoreMenuFor] = useState<string | null>(null)
+  const [enableSearch, setEnableSearch] = useState(false)
+  const [enableThinking, setEnableThinking] = useState(false)
   const [streamMeta, setStreamMeta] = useState<{ provider: string; model: string } | null>(null)
   const [history, setHistory] = useState<HistoryItem[]>(() => loadLocal('nados-history', initialHistory))
   const [spaces, setSpaces] = useState<Space[]>(() => loadLocal('nados-spaces', initialSpaces))
@@ -526,7 +529,7 @@ function AppV2() {
         setReply({ answer: [text], bullets: [], sources: [] })
       }, memoryHistory, controller.signal, (provider, modelLabel) => {
         setStreamMeta({ provider, model: modelLabel })
-      })
+      }, { enableThinking })
     } finally {
       abortControllerRef.current = null
     }
@@ -698,16 +701,13 @@ function AppV2() {
 
   const updateSettings = (next: Partial<AppSettings>) => setSettings((current) => ({ ...current, ...next }))
   const selectedModel = models.find((item) => item.id === model) || automaticModel
-  const composerProps = { query, setQuery, onSubmit: () => submit(), mode, setMode, model, models, setModel, modelOpen, setModelOpen, modeOpen, setModeOpen, fileInput, cameraInput, selectedFiles, setSelectedFiles, textarea, startVoice: startDictation, listening, loading, onStop: stopGeneration, acceptFile: (file: File) => {
-    if (file.size > 20 * 1024 * 1024) { setToast('الحد الأقصى لحجم الملف 20MB'); return }
-    setSelectedFiles((current) => current.length >= 5 ? current : [...current, file])
-    setToast('أُرفق الملف')
-  } }
+  const composerProps = { query, setQuery, onSubmit: () => submit(), mode, setMode, model, models, setModel, modelOpen, setModelOpen, modeOpen, setModeOpen, fileInput, cameraInput, selectedFiles, setSelectedFiles, textarea, startVoice: startDictation, listening, loading, onStop: stopGeneration, enableSearch: enableSearch || mode === 'web', enableThinking, setEnableSearch: (value: boolean) => { setEnableSearch(value); setMode(value ? 'web' : 'create') }, setEnableThinking }
   const viewTitles: Partial<Record<View, string>> = { chat: 'محادثة', discover: 'استكشف', library: 'المكتبة', spaces: 'المساحات', studio: 'إنشاء الصور', computer: 'التحكم بالكمبيوتر', connectors: 'التطبيقات المتصلة', training: 'مركز التدريب' }
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${sidebarOpen ? 'sidebar--open' : ''}`}>
+      <aside className={`sidebar ${sidebarOpen ? 'sidebar--open' : ''} ${sidebarCollapsed ? 'sidebar--collapsed' : ''}`}>
+        {window.innerWidth >= 900 && <button className="sidebar-collapse" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? 'توسيع القائمة' : 'طي القائمة'} title={sidebarCollapsed ? 'توسيع' : 'طي'}>{sidebarCollapsed ? <ChevronDown size={15} style={{ transform: 'rotate(90deg)' }} /> : <ChevronDown size={15} style={{ transform: 'rotate(-90deg)' }} />}</button>}
         <div className="sidebar-top"><button className="sidebar-brand" onClick={openCurrentSession} aria-label="الجلسة الحالية"><BrandMark small /><strong>Nados <span>AI</span></strong></button><button className="icon-button sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="إغلاق القائمة" title="إغلاق"><X size={19} /></button></div>
         <button className="new-chat" onClick={() => void createNewSession()} disabled={loading}><Plus size={18} /><span>محادثة جديدة</span><kbd>Ctrl K</kbd></button>
         <nav className="main-nav" aria-label="التنقل الرئيسي">
