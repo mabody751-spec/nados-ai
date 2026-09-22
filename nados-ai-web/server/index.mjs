@@ -16,6 +16,7 @@ import { availableModels, resolveModelSelection } from './models.mjs'
 import { getConversations, getTrainingStats, saveConversation, saveTeacherOutput, saveTrainingExample, supabaseEnabled } from './supabaseStore.mjs'
 import { buildProviderRegistry, swarmLearn, newTrainingJob, TRAINING_PROVIDER_STATE } from './training/engine.mjs'
 import { callLocalNados, callProvider } from './providers.mjs'
+import { runAgentLoop } from './agentLoop.mjs'
 import { exportDatasetFromSupabase, kaggleEnabled, kernelLiveState, kernelStatus, pullKernelOutput, pushDataset, pushTrainingKernel, verifyKaggleCredentials } from './training/kaggleBridge.mjs'
 
 const app = express()
@@ -295,6 +296,34 @@ app.post('/api/training/generate', requireLocalOrigin, async (request, response)
 app.post('/api/training/queue', requireLocalOrigin, (request, response) => {
   const job = newTrainingJob(request.body || {})
   response.status(202).json({ queued: true, job })
+})
+
+app.post('/api/agent/run', requireLocalOrigin, async (request, response) => {
+  response.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  })
+  const sendEvent = (event) => {
+    try { response.write(`data: ${JSON.stringify(event)}\n\n`) } catch {}
+  }
+  const heartbeat = setInterval(() => { try { response.write(': nados-heartbeat\n\n') } catch {} }, 15_000)
+  try {
+    const { task, mode } = request.body || {}
+    if (!task?.trim()) {
+      sendEvent({ type: 'error', message: 'نص المهمة مطلوبة.' })
+      return response.end()
+    }
+    const result = await runAgentLoop({ task, mode: mode || 'create', onEvent: sendEvent })
+    sendEvent({ type: 'agent_complete', summary: result.summary, filesChanged: result.filesChanged, steps: result.steps, durationMs: result.durationMs })
+    response.end()
+  } catch (error) {
+    sendEvent({ type: 'error', message: String(error?.message || error).slice(0, 250) })
+    response.end()
+  } finally {
+    clearInterval(heartbeat)
+  }
 })
 
 app.get('/api/training/kaggle/status', requireLocalOrigin, async (_request, response) => {
