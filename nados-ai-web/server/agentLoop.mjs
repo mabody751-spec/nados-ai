@@ -1,13 +1,17 @@
 import { toolRegistry, listTools } from './tools.mjs'
 import { callProvider } from './providers.mjs'
 import { modeInstructions } from './instructions.mjs'
+import { getMode, modeToolsAllowed, modeAllowsFile } from './modes.mjs'
 
 export const MAX_STEPS = 50
 
-const AGENT_SYSTEM_PROMPT = () => `أنت وكيل Nados الذكي (Agentic). تعمل داخل جلسة معزولة بأدوات ملفات حقيقية.
+const AGENT_SYSTEM_PROMPT = (slug = 'code') => {
+  const mode = getMode(slug)
+  const allowed = modeToolsAllowed(slug)
+  return `أنت وكيل Nados الذكي — وضع «${mode.name}». ${mode.roleDefinition}
 
-الأدوات المتاحة:
-${listTools().map((tool) => `- ${tool.name}(${Object.keys(tool.params).join(', ')}): ${tool.description}`).join('\n')}
+الأدوات المتاحة لك في هذا الوضع:
+${listTools().filter((tool) => allowed.has(tool.name)).map((tool) => `- ${tool.name}(${Object.keys(tool.params).join(', ')}): ${tool.description}`).join('\n')}
 
 منهجيتك (ReAct):
 1. فكّر في المهمة وحدّد الخطوة التالية
@@ -18,11 +22,13 @@ ${listTools().map((tool) => `- ${tool.name}(${Object.keys(tool.params).join(', '
 
 قواعد صارمة:
 - استخدم الأداة بصيغة JSON فقط: {"tool": "اسم_الأداة", "params": {...}}
+- الأدوات غير المدرجة أعلاه محجوبة في وضعك الحالي
 - لا تختلق نتائج أدوات — انتظر النتيجة الفعلية
 - حد أقصى ${MAX_STEPS} خطوة
 - عند كتابة ملفات: اكتب الكود كاملاً الصالح
 
 أجب إما بنص نهائي (المهمة اكتملت) أو باستدعاء أداة واحد بصيغة JSON صرفة.`
+}
 
 export function parseAgentResponse(text) {
   const raw = String(text || '').trim()
@@ -38,20 +44,22 @@ export function parseAgentResponse(text) {
   return { content: raw }
 }
 
-export async function runAgentLoop({ task, sessionId = 'sandbox', mode = 'create', onEvent = () => {} }) {
+export async function runAgentLoop({ task, sessionId = 'sandbox', mode = 'code', onEvent = () => {} }) {
   const started = Date.now()
+  const modeDef = getMode(mode)
+  const allowedTools = modeToolsAllowed(mode)
   const history = []
   const filesChanged = []
   const toolCallsLog = []
   let finalContent = ''
   let steps = 0
 
-  onEvent({ type: 'agent_start', task, tools: listTools().map((tool) => tool.name) })
+  onEvent({ type: 'agent_start', task, mode: modeDef.slug, modeName: modeDef.name, tools: [...allowedTools] })
 
   while (steps < MAX_STEPS) {
     steps += 1
     const conversation = [
-      { role: 'system', content: AGENT_SYSTEM_PROMPT() },
+      { role: 'system', content: AGENT_SYSTEM_PROMPT(modeDef.slug) },
       { role: 'user', content: `المهمة: ${task}` },
       ...history,
     ]
@@ -85,6 +93,30 @@ export async function runAgentLoop({ task, sessionId = 'sandbox', mode = 'create
       finalContent = content || response?.text || ''
       onEvent({ type: 'agent_done', steps, summary: finalContent.slice(0, 300) })
       break
+    }
+
+    if (!allowedTools.has(toolCall.tool)) {
+      const blocked = { error: `الأداة «${toolCall.tool}» محجوبة في وضع «${modeDef.name}» — الأدوات المسموحة: ${[...allowedTools].join(', ')}` }
+      toolCallsLog.push({ step: steps, tool: toolCall.tool, params: toolCall.params, result: blocked, blocked: true })
+      onEvent({ type: 'tool_result', step: steps, tool: toolCall.tool, result: blocked })
+      history.push(
+        { role: 'assistant', content: JSON.stringify({ tool: toolCall.tool, params: toolCall.params }) },
+        { role: 'assistant', content: `النتيجة: ${JSON.stringify(blocked)}` },
+      )
+      history.splice(0, Math.max(0, history.length - 12))
+      continue
+    }
+
+    if ((toolCall.tool === 'write_file') && !modeAllowsFile(modeDef.slug, toolCall.params?.path)) {
+      const blocked = { error: `قيود وضع «${modeDef.name}»: الملفات المسموحة فقط ${modeDef.fileRegex}` }
+      toolCallsLog.push({ step: steps, tool: toolCall.tool, params: toolCall.params, result: blocked, blocked: true })
+      onEvent({ type: 'tool_result', step: steps, tool: toolCall.tool, result: blocked })
+      history.push(
+        { role: 'assistant', content: JSON.stringify({ tool: toolCall.tool, params: toolCall.params }) },
+        { role: 'assistant', content: `النتيجة: ${JSON.stringify(blocked)}` },
+      )
+      history.splice(0, Math.max(0, history.length - 12))
+      continue
     }
 
     onEvent({ type: 'tool_call', step: steps, tool: toolCall.tool, params: toolCall.params })

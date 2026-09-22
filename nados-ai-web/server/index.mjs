@@ -17,6 +17,8 @@ import { getConversations, getTrainingStats, saveConversation, saveTeacherOutput
 import { buildProviderRegistry, swarmLearn, newTrainingJob, TRAINING_PROVIDER_STATE } from './training/engine.mjs'
 import { callLocalNados, callProvider } from './providers.mjs'
 import { runAgentLoop } from './agentLoop.mjs'
+import { task as runSubagentTask, board_post, board_read, subagentCount } from './subagents.mjs'
+import { deepResearch } from './deepResearch.mjs'
 import { exportDatasetFromSupabase, kaggleEnabled, kernelLiveState, kernelStatus, pullKernelOutput, pushDataset, pushTrainingKernel, verifyKaggleCredentials } from './training/kaggleBridge.mjs'
 
 const app = express()
@@ -296,6 +298,51 @@ app.post('/api/training/generate', requireLocalOrigin, async (request, response)
 app.post('/api/training/queue', requireLocalOrigin, (request, response) => {
   const job = newTrainingJob(request.body || {})
   response.status(202).json({ queued: true, job })
+})
+
+app.post('/api/agent/task', requireLocalOrigin, async (request, response) => {
+  try {
+    const { mode, instructions, background, depth } = request.body || {}
+    if (!instructions?.trim()) return response.status(400).json({ error: 'تعليمات المهمة مطلوبة.' })
+    const result = await runSubagentTask({ mode, instructions, background, depth }, 'sandbox')
+    response.json(result)
+  } catch (error) {
+    response.status(500).json({ error: error.message || 'فشل تشغيل الوكيل الفرعي.' })
+  }
+})
+
+app.get('/api/agent/board', requireLocalOrigin, (request, response) => {
+  const items = board_read('sandbox', { since: request.query.since || null, limit: Number(request.query.limit) || 50 })
+  response.json({ board: items, running: subagentCount('sandbox') })
+})
+
+app.post('/api/agent/research', requireLocalOrigin, async (request, response) => {
+  response.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  })
+  const sendEvent = (event) => {
+    try { response.write(`data: ${JSON.stringify(event)}\n\n`) } catch {}
+  }
+  const heartbeat = setInterval(() => { try { response.write(': nados-heartbeat\n\n') } catch {} }, 15_000)
+  try {
+    const { question } = request.body || {}
+    if (!question?.trim()) {
+      sendEvent({ type: 'error', message: 'سؤال البحث مطلوب.' })
+      return response.end()
+    }
+    sendEvent({ type: 'research_start', question })
+    const result = await deepResearch(question, 'sandbox')
+    sendEvent({ type: 'research_complete', mainQuestion: result.mainQuestion, report: result.report, sources: result.sources, validation: result.validation, durationMs: result.durationMs })
+    response.end()
+  } catch (error) {
+    sendEvent({ type: 'error', message: String(error?.message || error).slice(0, 250) })
+    response.end()
+  } finally {
+    clearInterval(heartbeat)
+  }
 })
 
 app.post('/api/agent/run', requireLocalOrigin, async (request, response) => {

@@ -34,7 +34,7 @@ test('agent loop completes a simple file task', async () => {
     return new Response(JSON.stringify({ choices: [{ message: { content: response } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
   const events = []
-  const result = await runAgentLoop({ task: 'أنشئ ملف agent-test.txt بمحتوى hello from agent', mode: 'create', onEvent: (event) => events.push(event) })
+  const result = await runAgentLoop({ task: 'أنشئ ملف agent-test.txt بمحتوى hello from agent', mode: 'code', onEvent: (event) => events.push(event) })
   assert.ok(result.filesChanged.some((file) => file.includes('agent-test.txt')))
   assert.ok(result.steps >= 2)
   assert.ok(events.some((event) => event.type === 'tool_call'))
@@ -57,7 +57,7 @@ test('agent loop handles tool errors gracefully', async () => {
     return new Response(JSON.stringify({ choices: [{ message: { content: response } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
   const events = []
-  const result = await runAgentLoop({ task: 'اقرأ ملفاً غير موجود', mode: 'create', onEvent: (event) => events.push(event) })
+  const result = await runAgentLoop({ task: 'اقرأ ملفاً غير موجود', mode: 'code', onEvent: (event) => events.push(event) })
   const toolResult = events.find((event) => event.type === 'tool_result')
   assert.ok(toolResult?.result?.error || toolResult?.result?.output)
   assert.match(result.summary, /غير موجود|لا يمكن/)
