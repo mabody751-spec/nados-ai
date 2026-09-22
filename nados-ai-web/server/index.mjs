@@ -542,6 +542,7 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
     const enableThinking = request.body?.thinking === 'true'
     const customPrompt = String(request.body?.system_prompt || '').trim().slice(0, 2000)
     const userTemperature = Number(request.body?.temperature)
+    const providerMode = effectiveProviderMode(mode, message, Boolean(chatFiles.length))
     const baseInstructions = enableThinking
       ? `${modeInstructions(providerMode, features, chatFiles[0] || null)}\n\nفكّر خطوة بخطوة داخلياً قبل الإجابة: حلل الطلب، قسّمه، ثم قدّم إجابة دقيقة ومنظمة.`
       : modeInstructions(providerMode, features, chatFiles[0] || null)
