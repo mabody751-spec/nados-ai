@@ -5,6 +5,35 @@ import { getMode, modeToolsAllowed, modeAllowsFile } from './modes.mjs'
 
 export const MAX_STEPS = 50
 export const MAX_AUTO_FIX_ATTEMPTS = 3
+export const TASK_BUDGETS = {
+  maxTokens: Number(process.env.NADOS_TASK_MAX_TOKENS) || 150_000,
+  maxDurationMs: Number(process.env.NADOS_TASK_MAX_TIME_MS) || 600_000,
+  maxCostUsd: Number(process.env.NADOS_TASK_MAX_COST) || 0.5,
+}
+
+// Free-first: free tiers cost $0 — priced models use rough per-1k-token estimates.
+const COST_PER_1K = {
+  gemini: 0.003,
+  groq: 0,
+  nvidia: 0,
+  openai: 0.01,
+  'xkiro-minimax-m3-free': 0,
+  'nados-local': 0,
+}
+
+export function estimateCost(providerId, usage) {
+  const rate = COST_PER_1K[String(providerId || '').toLowerCase()] ?? 0
+  const tokens = (usage?.prompt || 0) + (usage?.completion || 0)
+  return Number(((tokens / 1000) * rate).toFixed(6))
+}
+
+export function budgetStatus({ tokensUsed = 0, durationMs = 0, costUsd = 0 }) {
+  const reasons = []
+  if (tokensUsed > TASK_BUDGETS.maxTokens) reasons.push('tokens')
+  if (durationMs > TASK_BUDGETS.maxDurationMs) reasons.push('time')
+  if (costUsd > TASK_BUDGETS.maxCostUsd) reasons.push('cost')
+  return { exceeded: reasons.length > 0, reasons, limits: TASK_BUDGETS }
+}
 
 export async function verifyProject(onEvent = () => {}) {
   const { existsSync } = await import('node:fs')
@@ -81,6 +110,8 @@ export async function runAgentLoop({ task, sessionId = 'sandbox', mode = 'code',
   const toolCallsLog = []
   let finalContent = ''
   let steps = 0
+  let tokensUsed = 0
+  let costUsed = 0
 
   onEvent({ type: 'agent_start', task, mode: modeDef.slug, modeName: modeDef.name, tools: [...allowedTools] })
 
@@ -113,6 +144,17 @@ export async function runAgentLoop({ task, sessionId = 'sandbox', mode = 'code',
     if (!response) {
       onEvent({ type: 'error', message: String(lastError?.message || 'فشل جميع المزوّدين').slice(0, 200) })
       throw lastError || new Error('فشل جميع المزوّدين.')
+    }
+
+    // تتبع التكلفة والميزانية
+    const usage = response?.usage || null
+    tokensUsed += (usage?.total || 0)
+    costUsed += estimateCost(response?.provider, usage)
+    const budget = budgetStatus({ tokensUsed, durationMs: Date.now() - started, costUsd: costUsed })
+    if (budget.exceeded) {
+      finalContent = finalContent || `توقفت الحلقة: تجاوزت ميزانية المهمة (${budget.reasons.join(', ')}) — أنجزت ${filesChanged.length} ملفاً قبل الإيقاف.`
+      onEvent({ type: 'agent_paused', reason: 'budget', details: budget, tokensUsed, costUsd: costUsed })
+      break
     }
 
     const { toolCall, content } = parseAgentResponse(response?.text || '')
@@ -177,5 +219,7 @@ export async function runAgentLoop({ task, sessionId = 'sandbox', mode = 'code',
     toolCalls: toolCallsLog,
     steps,
     durationMs: Date.now() - started,
+    tokensUsed,
+    costUsd: costUsed,
   }
 }

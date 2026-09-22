@@ -316,6 +316,18 @@ app.get('/api/agent/board', requireLocalOrigin, (request, response) => {
   response.json({ board: items, running: subagentCount('sandbox') })
 })
 
+app.get('/api/agent/diff', requireLocalOrigin, async (_request, response) => {
+  try {
+    const { execFile } = await import('node:child_process')
+    const { promisify } = await import('node:util')
+    const run = promisify(execFile)
+    const { stdout } = await run('powershell.exe', ['-NoProfile', '-Command', "Set-Location 'D:/nadosai'; git diff --stat"], { timeout: 20_000, windowsHide: true, maxBuffer: 1024 * 1024 })
+    response.json({ diffStat: stdout || 'لا توجد تغييرات غير معتمدة', note: 'التغييرات تعرض ملفات الجلسة المعدلة — استخدم git diff للتفاصيل' })
+  } catch (error) {
+    response.status(500).json({ error: error.message || 'فشل جلب التغييرات.' })
+  }
+})
+
 app.post('/api/agent/research', requireLocalOrigin, async (request, response) => {
   response.writeHead(200, {
     'Content-Type': 'text/event-stream',
