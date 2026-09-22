@@ -868,7 +868,7 @@ function AppV2() {
 
         {view === 'discover' && <DiscoverView onAsk={submit} />}
         {view === 'training' && <TrainingCenter />}
-        {view === 'agents' && <AgentManager />}
+        {(view === 'agents' || view === 'work') && <AgentManager />}
         {view === 'library' && <LibraryView history={history} spaces={spaces} onOpen={openCurrentSession} />}
         {view === 'spaces' && <SpacesView spaces={spaces} setSpaces={setSpaces} onAsk={submit} />}
         {view === 'studio' && <StudioView connected={capabilities.features.images} />}
