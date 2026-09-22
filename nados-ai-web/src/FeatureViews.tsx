@@ -675,20 +675,33 @@ export function SettingsPanel({ settings, capabilities, onChange, onProvidersCha
         )}
         {activeTab === 'preferences' && (
           <>
-            <div className="settings-group">
-              <h3>التجربة</h3>
+            <div className="settings-group settings-card-general">
+              <h3>عام</h3>
+              <div className="settings-choice"><span>السمة</span><div className="segmented-control"><button className={!settings.dark ? 'active' : ''} onClick={() => onChange({ dark: false })}>نهاري</button><button className={settings.dark ? 'active' : ''} onClick={() => onChange({ dark: true })}>ليلي</button></div></div>
+              <div className="settings-choice"><span>اللغة</span><div className="segmented-control"><button className={settings.language === 'ar' ? 'active' : ''} onClick={() => onChange({ language: 'ar' })}>العربية</button><button className={settings.language === 'en' ? 'active' : ''} onClick={() => onChange({ language: 'en' })}>English</button></div></div>
+            </div>
+            <div className="settings-group settings-card-chat">
+              <h3>المحادثة والذكاء</h3>
               <SettingToggle icon={ShieldCheck} title="الوضع الخفي" note="لا تحفظ المحادثات الجديدة" checked={settings.incognito} onChange={(value) => onChange({ incognito: value })} />
               <SettingToggle icon={Sparkles} title="ذاكرة المحادثة" note="يتذكر Nados الرسائل السابقة داخل المحادثة" checked={settings.memory} onChange={(value) => onChange({ memory: value })} />
               <SettingToggle icon={BookOpen} title="إظهار المصادر" note="أرفق المراجع مع الإجابات" checked={settings.citations} onChange={(value) => onChange({ citations: value })} />
+              <div className="settings-prompt">
+                <label htmlFor="system-prompt">التعليمات الأساسية (System Prompt)</label>
+                <textarea id="system-prompt" value={settings.systemPrompt || ''} onChange={(event) => onChange({ systemPrompt: event.target.value })} rows={4} maxLength={2000} placeholder="تعليمات مخصصة تتبعها Nados في كل محادثة — مثال: أجب بإيجاز وبأسلوب تقني." dir="auto" />
+                <small>{(settings.systemPrompt || '').length}/2000</small>
+              </div>
             </div>
-            <div className="settings-group">
-              <h3>المظهر</h3>
-              <div className="settings-choice"><span>السمة</span><div className="segmented-control"><button className={settings.dark ? '' : 'active'} onClick={() => onChange({ dark: false })}>نهاري</button><button className={settings.dark ? 'active' : ''} onClick={() => onChange({ dark: true })}>ليلي</button></div></div>
-              <div className="settings-choice"><span>اللغة</span><div className="segmented-control"><button className={settings.language === 'ar' ? 'active' : ''} onClick={() => onChange({ language: 'ar' })}>العربية</button><button className={settings.language === 'en' ? 'active' : ''} onClick={() => onChange({ language: 'en' })}>English</button></div></div>
+            <div className="settings-group settings-card-model">
+              <h3>إعدادات النموذج</h3>
+              <div className="settings-choice"><span>درجة الإبداع (Temperature)</span><div className="temperature-slider"><input type="range" min="0" max="2" step="0.1" value={settings.temperature ?? 0.7} onChange={(event) => onChange({ temperature: Number(event.target.value) })} aria-label="درجة الإبداع" /><strong dir="ltr">{(settings.temperature ?? 0.7).toFixed(1)}</strong></div><small>{(settings.temperature ?? 0.7) < 0.4 ? 'دقيق ومحافظ' : (settings.temperature ?? 0.7) > 1.2 ? 'إبداعي وتنوع أعلى' : 'متوازن'}</small></div>
+            </div>
+            <button className="settings-link"><Settings size={17} /><span>إدارة الحساب والفوترة</span><ArrowLeft size={16} /></button>
+            <div className="settings-about">
+              <strong>Nados AI</strong>
+              <small>الإصدار: Nados v1.1 · مبني بـ React + TypeScript · نماذج متعددة مع تعلم مستمر</small>
             </div>
           </>
         )}
-        <button className="settings-link"><Settings size={17} /><span>إدارة الحساب والفوترة</span><ArrowLeft size={16} /></button>
       </aside>
     </div>
   )

@@ -27,6 +27,8 @@ export interface AppSettings {
   memory: boolean
   citations: boolean
   language: 'ar' | 'en'
+  systemPrompt?: string
+  temperature?: number
 }
 
 export const initialHistory: HistoryItem[] = [

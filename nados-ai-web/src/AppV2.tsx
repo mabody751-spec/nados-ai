@@ -529,7 +529,7 @@ function AppV2() {
         setReply({ answer: [text], bullets: [], sources: [] })
       }, memoryHistory, controller.signal, (provider, modelLabel) => {
         setStreamMeta({ provider, model: modelLabel })
-      }, { enableThinking })
+      }, { enableThinking, systemPrompt: settings.systemPrompt, temperature: settings.temperature ?? 0.7 })
     } finally {
       abortControllerRef.current = null
     }

@@ -540,10 +540,12 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
     const chatFiles = request.files || []
     const primaryFile = chatFiles.find((item) => item.mimetype?.startsWith('image/')) || chatFiles[0] || null
     const enableThinking = request.body?.thinking === 'true'
-    const providerMode = effectiveProviderMode(mode, message, Boolean(chatFiles.length))
-    const instructions = enableThinking
+    const customPrompt = String(request.body?.system_prompt || '').trim().slice(0, 2000)
+    const userTemperature = Number(request.body?.temperature)
+    const baseInstructions = enableThinking
       ? `${modeInstructions(providerMode, features, chatFiles[0] || null)}\n\nفكّر خطوة بخطوة داخلياً قبل الإجابة: حلل الطلب، قسّمه، ثم قدّم إجابة دقيقة ومنظمة.`
       : modeInstructions(providerMode, features, chatFiles[0] || null)
+    const instructions = customPrompt ? `${baseInstructions}\n\nتعليمات المستخدم المخصصة (التزم بها حرفياً):\n${customPrompt}` : baseInstructions
     const selectedModel = resolveModelSelection(model)
 
     if (isNadosIdentityQuestion(message)) {
@@ -581,7 +583,7 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
         return response.end()
       }
       try {
-        const localResult = await callLocalNados({ message, files: chatFiles, history, instructions, model: selectedModel.model })
+        const localResult = await callLocalNados({ message, files: chatFiles, history, instructions, model: selectedModel.model, temperature: Number.isFinite(userTemperature) ? userTemperature : undefined })
         sendEvent(response, { type: 'meta', provider: 'nados' })
         for (let index = 0; index < localResult.text.length; index += 72) sendEvent(response, { type: 'delta', delta: localResult.text.slice(index, index + 72) })
         sendEvent(response, { type: 'done', reply: { ...splitAnswer(localResult.text), sources: [], provider: 'nados', demo: false, usage: localResult.usage } })

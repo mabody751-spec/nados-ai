@@ -7,7 +7,7 @@ import { findRuntimeProvider, publicRuntimeProviders, removeRuntimeProvider, run
 const SEARCH_MODES = new Set(['web', 'research', 'academic'])
 const HUGE_MESSAGE_TOKENS = 90_000
 
-export async function callLocalNados({ message, files, history = [], instructions, model }) {
+export async function callLocalNados({ message, files, history = [], instructions, model, temperature }) {
   const baseUrl = String(process.env.NADOS_LOCAL_LLM_URL || 'http://127.0.0.1:8080').trim().replace(/\/$/, '')
   try {
     const health = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(8000) })
@@ -28,7 +28,7 @@ export async function callLocalNados({ message, files, history = [], instruction
   const data = await fetchJson(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: model || 'nados-v1-1', messages, temperature: 0.25, max_tokens: computeMaxTokens({ model, instructions, history: fittedHistory, message: fittedContent }) }),
+    body: JSON.stringify({ model: model || 'nados-v1-1', messages, temperature: Number.isFinite(temperature) ? temperature : 0.7, max_tokens: computeMaxTokens({ model, instructions, history: fittedHistory, message: fittedContent }) }),
   }, 'Nados v1.1')
   const text = contentText(data?.choices?.[0]?.message?.content)
   if (!text) throw new Error('Nados v1.1: لم يصل نص من الخادم المحلي.')
@@ -247,7 +247,7 @@ async function fetchJson(url, options, provider) {
   throw lastError
 }
 
-async function callGemini({ message, mode, file, files, history = [], instructions, modelOverride }) {
+async function callGemini({ message, mode, file, files, history = [], instructions, modelOverride, temperature }) {
   const models = modelOverride ? [modelOverride] : modelPool(process.env.GEMINI_MODEL, process.env.GEMINI_MODELS, ['gemini-2.5-flash'])
   const fittedHistory = fitHistoryToContext(history, Number(process.env.GEMINI_CONTEXT_CHARS) || historyCharacterBudget(models[0]))
   const list = Array.isArray(files) && files.length ? files : file ? [file] : []
@@ -276,7 +276,7 @@ async function callGemini({ message, mode, file, files, history = [], instructio
       ...fittedHistory.map((item) => ({ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text: item.content }] })),
       { role: 'user', parts },
     ],
-    generation_config: { temperature: 0.25, max_output_tokens: geminiMaxTokens },
+    generation_config: { temperature: Number.isFinite(temperature) ? temperature : 0.25, max_output_tokens: geminiMaxTokens },
   }
   if (SEARCH_MODES.has(mode)) body.tools = [{ google_search: {} }]
 
@@ -372,7 +372,7 @@ function compatibleSources(data) {
   }).filter(Boolean)
 }
 
-async function callCompatible({ id, name, baseUrl, apiKey, model, wireApi = 'chat-completions', message, file, files, history = [], instructions, headers = {}, maxTokens = null, extraBody = {} }) {
+async function callCompatible({ id, name, baseUrl, apiKey, model, wireApi = 'chat-completions', message, file, files, history = [], instructions, headers = {}, maxTokens = null, extraBody = {}, temperature }) {
   const fittedHistory = fitHistoryToContext(history, Number(process.env.NADOS_COMPATIBLE_CONTEXT_CHARS) || historyCharacterBudget(model))
   const rawContent = compatibleContent(message, files?.length ? files : file)
   const fittedContent = typeof rawContent === 'string'
