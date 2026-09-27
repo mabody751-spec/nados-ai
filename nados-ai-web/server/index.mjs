@@ -773,7 +773,26 @@ app.get('/api/providers/capabilities', (request, response) => {
     response.status(500).json({ error: error.message || 'فشل الحصول على إمكانيات المزودين.' })
   }
 })
-app.post('/api/chat/stream', upload.array('files', 5), async (request, response) => {
+// Lightweight per-IP limiter for expensive inference endpoints (chat + audio).
+// Complements Cloudflare edge rate limiting and prevents runaway loops.
+const chatRateBuckets = new Map()
+function chatRateLimit(request, response, next) {
+  const ip = request.ip || request.socket?.remoteAddress || 'local'
+  const now = Date.now()
+  const windowMs = 60_000
+  const max = Number(process.env.NADOS_CHAT_RATE_LIMIT) || 60
+  if (chatRateBuckets.size > 5_000) {
+    for (const [key, entry] of chatRateBuckets) if (now > entry.resetAt) chatRateBuckets.delete(key)
+  }
+  const bucket = chatRateBuckets.get(ip) || { count: 0, resetAt: now + windowMs }
+  if (now > bucket.resetAt) { bucket.count = 0; bucket.resetAt = now + windowMs }
+  bucket.count += 1
+  chatRateBuckets.set(ip, bucket)
+  if (bucket.count > max) return response.status(429).json({ error: 'عدد طلبات المحادثة كبير — انتظر قليلاً ثم أعد المحاولة.' })
+  next()
+}
+
+app.post('/api/chat/stream', chatRateLimit, upload.array('files', 5), async (request, response) => {
   let uploadedFileId = null
   let heartbeat = null
   try {
@@ -1025,7 +1044,7 @@ if (selectedModel.providerId === 'nados') {
   }
 })
 
-app.post('/api/audio/transcribe', upload.single('audio'), async (request, response) => {
+app.post('/api/audio/transcribe', chatRateLimit, upload.single('audio'), async (request, response) => {
   try {
     if (!request.file) return response.status(400).json({ error: 'لم يتم إرسال تسجيل صوتي.' })
     if (openai) {
@@ -1042,7 +1061,7 @@ app.post('/api/audio/transcribe', upload.single('audio'), async (request, respon
   }
 })
 
-app.post('/api/audio/speech', async (request, response) => {
+app.post('/api/audio/speech', chatRateLimit, async (request, response) => {
   try {
     const text = String(request.body.text || '').trim()
     if (!text || text.length > 4096) return response.status(400).json({ error: 'النص الصوتي غير صالح.' })
