@@ -2254,3 +2254,8 @@ html { overscroll-behavior-y: none; }
   .model-variant button { padding: 4px 6px; }
   .model-variant .mv-name { display: none; }
 }
+
+/* About tab: identity badges + description */
+.about-badges { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 4px; }
+.about-badges span { font-size: 11px; padding: 3px 10px; border-radius: 999px; background: rgb(var(--mint-rgb) / 0.12); color: var(--mint-dark); border: 1px solid rgb(var(--mint-rgb) / 0.25); }
+.about-desc { margin: 12px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.8; max-width: 520px; }

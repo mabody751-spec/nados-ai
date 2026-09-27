@@ -445,10 +445,17 @@ export function SettingsPanel({ settings, capabilities, onChange, onProvidersCha
           <>
             <div className="settings-group settings-about-card">
               <span className="about-logo">N</span>
-              <strong>Nados AI</strong>
-              <small>الإصدار: Nados v1.1 · واجهة React + TypeScript · تعلم مستمر وتوجيه ذكي بين مزوّدين متعددين.</small>
+              <strong>Nados (نادوس)</strong>
+              <small>أول نموذج ذكاء اصطناعي عراقي بالكامل · الإصدار Nados v1.1</small>
+              <div className="about-badges">
+                <span>عراقي بالكامل</span>
+                <span>عربي أولاً</span>
+                <span>ويب + Android</span>
+              </div>
+              <p className="about-desc">نموذج مدرَّب بتخصيص LoRA فوق قاعدة مفتوحة، ويعمل عبر بنية سحابية مع موزّع نماذج يختار الأنسب لكل طلب: محادثة ذكية، بحث عميق بمصادر موثّقة، تفكير عميق، تحليل الملفات والصور، وتفريغ صوتي.</p>
               <div className="about-meta">
-                <div><span>عدد المزودات المتصلة</span><strong>{connectedCount}</strong></div>
+                <div><span>المطوّر</span><strong>عبدالنور محمد إبراهيم</strong></div>
+                <div><span>المزوّدات المتصلة</span><strong>{connectedCount}</strong></div>
                 <div><span>ميزات مفعّلة</span><strong>{featureItems.filter(([id]) => capabilities.features[id]).length}/{featureItems.length}</strong></div>
                 <div><span>المحاذاة</span><strong>{settings.language === 'ar' ? 'العربية' : 'English'}</strong></div>
               </div>
