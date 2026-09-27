@@ -1,0 +1,40 @@
+# Render Blueprint (repo root) for the Nados API — Phase 0.
+# Render looks for render.yaml at the repository root; the app lives in nados-ai-web/.
+# NOTE: the `disk` requires a paid instance (Starter+). On the Free plan, delete it.
+services:
+  - type: web
+    name: nados-api
+    runtime: docker
+    dockerfilePath: ./nados-ai-web/Dockerfile
+    dockerContext: ./nados-ai-web
+    plan: starter
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: NODE_ENV
+        value: production
+      # Set these in the Render dashboard (do NOT commit secrets):
+      - key: NADOS_PROXY_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: NADOS_PROVIDER_ORDER
+        value: nvidia,xkiro-qwen-38-max,gemini,groq,nvidia-glm-53
+      - key: NADOS_PROVIDER_MODE
+        value: sequential
+    disk:
+      name: nados-data
+      mountPath: /app/.nados
+      sizeGB: 1
