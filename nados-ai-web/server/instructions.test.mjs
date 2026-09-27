@@ -57,7 +57,9 @@ test('answers Nados identity questions from the product core', () => {
   assert.equal(isNadosIdentityQuestion('هلو من معي اي نموذج'), true)
   assert.equal(isNadosIdentityQuestion('من أنت وما هو النموذج؟'), true)
   assert.equal(isNadosIdentityQuestion('اشرح لي هذا الكود'), false)
-  assert.match(identityReply().answer[0], /Nados v1\.0/)
+  assert.match(identityReply().answer[0], /Nados/)
+  assert.match(identityReply().answer[0], /عراقي/)
+  assert.match(identityReply().bullets.join(' '), /عبدالنور محمد إبراهيم/)
 })
 
 test('uses general providers for ordinary web-mode conversation', () => {
