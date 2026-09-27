@@ -6,8 +6,27 @@ dist/
 !.env.example
 npm-debug.log*
 .nados/
+# Work mode: real per-project execution workspaces (runtime data).
+workspaces/
 
 # wrangler files
 .wrangler
 .dev.vars*
 !.dev.vars.example
+
+# Capacitor / Android build outputs (project sources stay tracked)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/**/google-services.json
+android/app/release/
+android/.idea/
+*.keystore
+*.jks
+
+android/keystore.properties
+android/*.keystore
+
+# Build artifacts (APK/AAB) — not source
+releases/

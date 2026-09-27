@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { generateImageWithGemini, synthesizeWithGemini, transcribeWithGroq } from './mediaProviders.mjs'
+import { synthesizeWithGemini, transcribeWithGroq } from './mediaProviders.mjs'
 
 const originalFetch = globalThis.fetch
 
@@ -47,12 +47,4 @@ test('converts Gemini PCM speech to playable WAV', async () => {
   assert.equal(speech.contentType, 'audio/wav')
   assert.equal(speech.buffer.subarray(0, 4).toString(), 'RIFF')
   assert.equal(speech.buffer.length, 48)
-})
-
-test('returns Gemini image as a browser data URL', async () => {
-  process.env.GEMINI_API_KEY = 'gemini-test'
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'aW1hZ2U=' } }] } }],
-  }), { status: 200 })
-  assert.equal(await generateImageWithGemini('Nados', 'square'), 'data:image/png;base64,aW1hZ2U=')
 })

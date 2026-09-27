@@ -1,0 +1,11 @@
+// Lets Gradle auto-provision any JDK a module's toolchain requests (Capacitor 7
+// plugins request Java 21; AGP runs on the JAVA_HOME JDK).
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
+include ':app'
+include ':capacitor-cordova-android-plugins'
+project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
+
+apply from: 'capacitor.settings.gradle'

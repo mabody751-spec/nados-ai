@@ -1,12 +1,18 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { Check, Clipboard, Download, Eye, EyeOff, ExternalLink } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import { memo, useMemo, useState, type ReactNode } from 'react'
+import { Check, Clipboard, Download, Eye, EyeOff, ExternalLink, WrapText } from 'lucide-react'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import 'highlight.js/styles/github-dark.min.css'
 
 const frameLanguages = new Set(['html', 'htm', 'svg', 'css'])
 const textPreviewLanguages = new Set(['prompt', 'text', 'plaintext', 'markdown', 'md'])
+
+const extensionFor: Record<string, string> = {
+  javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts', tsx: 'tsx', jsx: 'jsx',
+  bash: 'sh', sh: 'sh', shell: 'sh', python: 'py', py: 'py', json: 'json', css: 'css',
+  html: 'html', svg: 'svg', markdown: 'md', md: 'md', yaml: 'yml', yml: 'yml', sql: 'sql', xml: 'xml',
+}
 
 function inferredLanguage(language: string, code: string) {
   const normalized = String(language || '').toLowerCase()
@@ -29,22 +35,26 @@ function previewDocument(language: string, code: string) {
   return `<!doctype html><html><head>${csp}</head><body>${code}</body></html>`
 }
 
-function CodeBlock({ language, code, highlighted }: { language: string; code: string; highlighted?: ReactNode }) {
+const CodeBlock = memo(function CodeBlock({ language, code, highlighted }: { language: string; code: string; highlighted?: ReactNode }) {
   const [copied, setCopied] = useState(false)
   const [previewing, setPreviewing] = useState(false)
+  const [wrap, setWrap] = useState(false)
   const resolvedLanguage = inferredLanguage(language, code)
   const canPreview = frameLanguages.has(resolvedLanguage) || textPreviewLanguages.has(resolvedLanguage)
   const label = resolvedLanguage === 'prompt' ? 'Prompt' : resolvedLanguage || 'Code'
+  const lines = useMemo(() => code.split('\n').length, [code])
   const source = useMemo(() => previewDocument(resolvedLanguage, code), [resolvedLanguage, code])
 
   const copy = async () => {
-    await navigator.clipboard.writeText(code)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1600)
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    } catch {}
   }
 
   const download = () => {
-    const extension = resolvedLanguage ? (resolvedLanguage === 'javascript' || resolvedLanguage === 'js' ? 'js' : resolvedLanguage === 'typescript' ? 'ts' : resolvedLanguage === 'bash' || resolvedLanguage === 'sh' ? 'sh' : resolvedLanguage) : 'txt'
+    const extension = extensionFor[resolvedLanguage] || resolvedLanguage || 'txt'
     const blob = new Blob([code], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
@@ -65,27 +75,31 @@ function CodeBlock({ language, code, highlighted }: { language: string; code: st
   return (
     <section className={`code-block ${language === 'prompt' ? 'prompt-block' : ''}`} dir="ltr">
       <header>
-        <span>{label}</span>
-        <div>
+        <span className="code-block__lang">{label}</span>
+        <span className="code-block__lines">{lines} سطر</span>
+        <div className="code-block__tools">
+          <button className={wrap ? 'is-active' : ''} onClick={() => setWrap((value) => !value)} aria-label="التفاف الأسطر" title="التفاف الأسطر">
+            <WrapText size={15} />
+          </button>
           {canPreview && (
             <>
               <button onClick={() => setPreviewing((value) => !value)} aria-label={previewing ? 'إغلاق المعاينة' : 'معاينة'} title={previewing ? 'إغلاق المعاينة' : 'معاينة'}>
-                {previewing ? <EyeOff size={16} /> : <Eye size={16} />}
+                {previewing ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
-              <button onClick={openPreviewTab} aria-label="فتح المعاينة في تبويب جديد" title="فتح المعاينة في تبويب جديد">
-                <ExternalLink size={16} />
+              <button onClick={openPreviewTab} aria-label="فتح المعاينة في تبويب جديد" title="فتح في تبويب جديد">
+                <ExternalLink size={15} />
               </button>
             </>
           )}
-          <button onClick={copy} aria-label="نسخ" title="نسخ">
-            {copied ? <Check size={16} /> : <Clipboard size={16} />}
+          <button onClick={copy} aria-label="نسخ" title="نسخ" className={copied ? 'is-copied' : ''}>
+            {copied ? <Check size={15} /> : <Clipboard size={15} />}
           </button>
           <button onClick={download} aria-label="تنزيل الكود" title="تنزيل">
-            <Download size={16} />
+            <Download size={15} />
           </button>
         </div>
       </header>
-      <pre><code className={language ? `language-${language} hljs` : undefined}>{highlighted ?? code}</code></pre>
+      <pre className={wrap ? 'is-wrapped' : ''}><code className={language ? `language-${language} hljs` : 'hljs'}>{highlighted ?? code}</code></pre>
       {previewing && frameLanguages.has(resolvedLanguage) && (
         <iframe className="code-preview" title={`معاينة ${label}`} sandbox="allow-scripts allow-same-origin" srcDoc={source} />
       )}
@@ -94,7 +108,7 @@ function CodeBlock({ language, code, highlighted }: { language: string; code: st
       )}
     </section>
   )
-}
+})
 
 function extractText(node: unknown): string {
   if (typeof node === 'string' || typeof node === 'number') return String(node)
@@ -105,30 +119,42 @@ function extractText(node: unknown): string {
   return ''
 }
 
-export function RichAnswer({ answer, bullets }: { answer: string[]; bullets: string[] }) {
+const markdownComponents: Components = {
+  pre: ({ children }) => {
+    const codeElement = Array.isArray(children) ? children[0] : children
+    const className = (codeElement as { props?: { className?: string } })?.props?.className || ''
+    const match = /language-([\w-]+)/.exec(className || '')
+    if (!match) return <pre className="code-block code-block--plain" dir="ltr"><code className="hljs">{children}</code></pre>
+    const code = extractText((codeElement as { props?: { children?: unknown } })?.props?.children).replace(/\n$/, '')
+    return <CodeBlock language={match[1].toLowerCase()} code={code} highlighted={(codeElement as { props?: { children?: ReactNode } })?.props?.children} />
+  },
+  a: ({ href, children }) => {
+    const external = /^https?:\/\//i.test(String(href || ''))
+    return (
+      <a href={href} target={external ? '_blank' : undefined} rel={external ? 'noreferrer noopener' : undefined} className={external ? 'md-link' : undefined}>
+        {children}{external && <ExternalLink size={12} className="md-link__icon" aria-hidden="true" />}
+      </a>
+    )
+  },
+  table: ({ children }) => <div className="md-table-wrap"><table>{children}</table></div>,
+  blockquote: ({ children }) => <blockquote className="md-quote">{children}</blockquote>,
+  img: ({ src, alt }) => <img className="md-image" src={typeof src === 'string' ? src : undefined} alt={alt || ''} loading="lazy" />,
+  input: ({ checked }) => <input type="checkbox" checked={Boolean(checked)} readOnly disabled className="md-task" />,
+}
+
+export function RichAnswer({ answer, bullets, streaming = false }: { answer: string[]; bullets: string[]; streaming?: boolean }) {
   const markdown = [answer.filter((item) => typeof item === 'string').join('\n\n'), bullets.filter((item) => typeof item === 'string').map((item) => `- ${item}`).join('\n')].filter(Boolean).join('\n\n')
 
   return (
-    <div className="answer-text">
+    <div className={`answer-text ${streaming ? 'answer-text--streaming' : ''}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
-        components={{
-          pre: ({ children }) => {
-            const codeElement = Array.isArray(children) ? children[0] : children
-            const className = (codeElement as { props?: { className?: string } })?.props?.className || ''
-            const match = /language-([\w-]+)/.exec(className || '')
-            if (!match) return <pre>{children}</pre>
-            const code = extractText((codeElement as { props?: { children?: unknown } })?.props?.children).replace(/\n$/, '')
-            return <CodeBlock language={match[1].toLowerCase()} code={code} highlighted={(codeElement as { props?: { children?: ReactNode } })?.props?.children} />
-          },
-          code: ({ className, children, ...props }) => {
-            return <code className={className} {...props}>{children}</code>
-          },
-        }}
+        components={markdownComponents}
       >
         {markdown}
       </ReactMarkdown>
+      {streaming && <span className="stream-caret" aria-hidden="true" />}
     </div>
   )
 }

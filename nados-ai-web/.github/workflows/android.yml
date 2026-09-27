@@ -1,0 +1,72 @@
+name: Android APK / AAB
+
+# Builds a real, installable APK and a Play-ready AAB for Nados AI.
+# Runs on GitHub's runners because it needs JDK 17 + the Android SDK.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'nados-ai-web/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nados-ai-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: nados-ai-web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Build web assets
+        run: npm run build
+
+      - name: Sync Capacitor (Android)
+        run: npx cap sync android
+
+      - name: Set up JDK 17 (AGP) and JDK 21 (Capacitor plugins)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build Debug APK
+        working-directory: nados-ai-web/android
+        run: chmod +x ./gradlew && ./gradlew assembleDebug --no-daemon
+
+      - name: Build Release APK + AAB
+        working-directory: nados-ai-web/android
+        run: ./gradlew assembleRelease bundleRelease --no-daemon
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nados-debug-apk
+          path: nados-ai-web/android/app/build/outputs/apk/debug/*.apk
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nados-release-apk
+          path: nados-ai-web/android/app/build/outputs/apk/release/*.apk
+
+      - name: Upload Release AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: nados-release-aab
+          path: nados-ai-web/android/app/build/outputs/bundle/release/*.aab

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile, writeFile, readdir, stat } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
+import { isBlockedExtension } from './sandbox/policy.mjs'
 
 const SANDBOX_ROOT = resolve(process.env.NADOS_SANDBOX_ROOT || 'D:/nadosai')
 
@@ -19,7 +20,8 @@ function safePath(path) {
   return resolved
 }
 
-const BLOCKED_EXTENSIONS = /\.(exe|dll|bat|cmd|ps1|sh|msi|reg)$/i
+// Shared with the Work execution sandbox (server/sandbox/policy.mjs) so the two
+// registries cannot drift on which file types are rejected.
 const MAX_FILE_BYTES = 2_000_000
 
 export const toolRegistry = {
@@ -40,7 +42,7 @@ export const toolRegistry = {
     params: { path: 'string', content: 'string' },
     async execute({ path, content }) {
       const target = safePath(path)
-      if (BLOCKED_EXTENSIONS.test(target)) throw new Error(`نوع الملف محجوب لأسباب أمنية: ${path}`)
+      if (isBlockedExtension(target)) throw new Error(`نوع الملف محجوب لأسباب أمنية: ${path}`)
       const body = String(content ?? '')
       if (Buffer.byteLength(body, 'utf8') > MAX_FILE_BYTES) throw new Error('المحتوى يتجاوز 2MB')
       await writeFile(target, body, 'utf8')
@@ -80,7 +82,7 @@ export const toolRegistry = {
           if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue
           const full = join(current, entry.name)
           if (entry.isDirectory()) { await scan(full, depth + 1); continue }
-          if (BLOCKED_EXTENSIONS.test(entry.name) || entry.name.length > 100) continue
+          if (isBlockedExtension(entry.name) || entry.name.length > 100) continue
           try {
             const info = await stat(full)
             if (info.size > 500_000) continue

@@ -3,26 +3,78 @@ import express from 'express'
 import multer from 'multer'
 import OpenAI, { toFile } from 'openai'
 import { existsSync } from 'node:fs'
+import { timingSafeEqual } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { callExternalProviders, callSelectedProvider, hasExternalProvider, providerStatuses, testProvider, initializeAllProviders, getProviderCapabilities, getAllProvidersHealth, getProviderHealth, getProviderStats, recordProviderResult, resetProviderStats } from './providers.mjs'
+import { callExternalProviders, callSelectedProvider, hasExternalProvider, providerStatuses, 
+testProvider, initializeAllProviders, getProviderCapabilities, getAllProvidersHealth, getProviderHealth, 
+getProviderStats, recordProviderResult, resetProviderStats, callDeepResearch, localModelStatus } from './providers.mjs'
 import { MAX_CONVERSATION_BYTES, validateConversationHistory, validateMessageText } from './limits.mjs'
-import { generateImageWithProviders, synthesizeWithGemini, transcribeWithGroq } from './mediaProviders.mjs'
+import { synthesizeWithGemini, transcribeWithGroq } from './mediaProviders.mjs'
 import { hasProviderApiKey } from './providerKeys.mjs'
 import { providerCatalog, publicRuntimeProviders, removeRuntimeProvider, upsertRuntimeProvider } from './providerStore.mjs'
 import { closeComputerSession, computerStatus, executeComputerStep, openComputerSession, planComputerStep } from './computer.mjs'
-import { capabilityReply, effectiveProviderMode, identityReply, isNadosCapabilityQuestion, isNadosIdentityQuestion, modeInstructions } from './instructions.mjs'
+import { capabilityReply, effectiveProviderMode, identityReply, isNadosCapabilityQuestion, isNadosIdentityQuestion, liveContext, modeInstructions } from './instructions.mjs'
 import { availableModels, resolveModelSelection } from './models.mjs'
+import { fetchNvidiaCatalog, nvidiaCatalogSummary, probeNvidiaCatalog } from './nvidiaModels.mjs'
 import { getConversations, getTrainingStats, saveConversation, saveTeacherOutput, saveTrainingExample, supabaseEnabled } from './supabaseStore.mjs'
 import { buildProviderRegistry, swarmLearn, newTrainingJob, TRAINING_PROVIDER_STATE } from './training/engine.mjs'
+import { getTrainingProgress, recordTrainingCycle, seedTrainingProgress, trainingProviderState } from './training/progress.mjs'
 import { callLocalNados, callProvider } from './providers.mjs'
 import { runAgentLoop, verifyProject, MAX_AUTO_FIX_ATTEMPTS } from './agentLoop.mjs'
 import { task as runSubagentTask, board_post, board_read, subagentCount } from './subagents.mjs'
 import { deepResearch } from './deepResearch.mjs'
 import { exportDatasetFromSupabase, kaggleEnabled, kernelLiveState, kernelStatus, pullKernelOutput, pushDataset, pushTrainingKernel, verifyKaggleCredentials } from './training/kaggleBridge.mjs'
+import { getPreviewOrigin, previewUrlFor, startPreviewServer, stopPreviewServer } from './previewServer.mjs'
+import {
+  createProject,
+  deleteProject,
+  getFileDiff,
+  getProject,
+  listFileChanges,
+  listProjectsForUser,
+  normalizeUserId as normalizeWorkUser,
+  projectBelongsTo,
+  projectCopyFile,
+  projectCreateDirectory,
+  projectDeleteFile,
+  projectList,
+  projectMoveFile,
+  projectReadFile,
+  projectSearch,
+  projectTree,
+  projectWriteFile,
+  rehydrateProjectsFromDisk,
+  workPersistenceEnabled,
+} from './workProjects.mjs'
+import {
+  availableWorkProviders,
+  availableWorkTargets,
+  detectStartCommand,
+  runWorkTaskWithRecovery,
+  verifyProjectWorkspace,
+  workModelLabel,
+  workPause,
+  workResume,
+  workRunState,
+  workStop,
+} from './workAgent.mjs'
+import {
+  LIMITS as SANDBOX_LIMITS,
+  executeCommandTool,
+  exportZip,
+  getServer,
+  probeExecution,
+  sandboxInfo,
+  startServer,
+  stopAllServers,
+  stopServer,
+} from './sandbox/index.mjs'
 
 const app = express()
 const port = Number(process.env.PORT || 8787)
+const host = String(process.env.HOST || '127.0.0.1')
+app.set('trust proxy', 1)
 const apiKey = process.env.OPENAI_API_KEY?.trim()
 const openai = apiKey
   ? new OpenAI({ apiKey, timeout: 120_000, maxRetries: 2 })
@@ -43,6 +95,22 @@ app.use((_, response, next) => {
   next()
 })
 app.use(express.json({ limit: '256kb' }))
+
+// When the API is exposed through a public proxy (Cloudflare Tunnel/Worker), a
+// shared token stops strangers from spending the host's provider keys. It is
+// enforced only when NADOS_PROXY_TOKEN is configured; local requests (including
+// the browser talking to localhost directly) always pass.
+const proxyToken = String(process.env.NADOS_PROXY_TOKEN || '').trim()
+function safeTokenEqual(a, b) {
+  const left = Buffer.from(String(a))
+  const right = Buffer.from(String(b))
+  return left.length === right.length && timingSafeEqual(left, right)
+}
+app.use('/api', (request, response, next) => {
+  if (!proxyToken || isLocalRequest(request)) return next()
+  if (safeTokenEqual(request.get('x-nados-proxy-token') || '', proxyToken)) return next()
+  response.status(401).json({ error: 'غير مصرّح: واجهة API محمية برمز النفق.' })
+})
 
 function modelFor(mode, file) {
   if (file?.mimetype?.startsWith('image/') || mode === 'files') {
@@ -97,18 +165,22 @@ function decorateSources(items) {
 }
 
 function splitAnswer(text) {
+  const raw = String(text || '').trim()
+  // Never restructure text that contains fenced code: trimming each line
+  // destroys code indentation and blank lines, producing invalid code.
+  if (/```/.test(raw)) return { answer: [raw], bullets: [] }
   const answer = []
   const bullets = []
-  for (const block of text.trim().split(/\n{2,}/)) {
+  for (const block of raw.split(/\n{2,}/)) {
     const lines = block.split('\n').map((line) => line.trim()).filter(Boolean)
     const bulletLines = lines.filter((line) => /^[-*•]\s+/.test(line))
-    if (bulletLines.length === lines.length) {
+    if (lines.length && bulletLines.length === lines.length) {
       bullets.push(...bulletLines.map((line) => line.replace(/^[-*•]\s+/, '')))
     } else {
       answer.push(lines.join('\n').replace(/^#{1,6}\s+/, ''))
     }
   }
-  return { answer: answer.length ? answer : [text.trim()], bullets }
+  return { answer: answer.length ? answer : [raw], bullets }
 }
 
 function fallbackReply(question, mode) {
@@ -173,6 +245,15 @@ function sendCompletedReply(response, reply, message = '') {
   saveConversation({ message, reply: reply.answer, mode: 'create', provider: reply.provider, sources: reply.sources || [] })
 }
 
+// Lightweight liveness/readiness probes for container platforms (no provider scan).
+app.get('/healthz', (_request, response) => {
+  response.json({ status: 'ok', uptime: Math.round(process.uptime()), version: process.env.NADOS_VERSION || '1.0' })
+})
+app.get('/readyz', (_request, response) => {
+  const configured = providerStatuses().filter((item) => item.configured).length
+  response.status(configured > 0 ? 200 : 503).json({ status: configured > 0 ? 'ready' : 'degraded', providers: configured })
+})
+
 app.get('/api/health', async (request, response) => {
   const providers = providerStatuses()
   const connected = providers.filter((item) => item.configured)
@@ -218,7 +299,6 @@ app.get('/api/health', async (request, response) => {
       files: connectedIds.has('gemini') || connectedIds.has('openai'),
       vision: visionProviderAvailable,
       video: connectedIds.has('gemini'),
-      images: Boolean(openai || hasProviderApiKey('gemini') || hasProviderApiKey('huggingface')),
       transcription: Boolean(openai || hasProviderApiKey('groq')),
       speech: Boolean(openai || hasProviderApiKey('gemini')),
       computer: computer.available && visionProviderAvailable,
@@ -421,8 +501,11 @@ app.get('/api/training/kaggle/status', requireLocalOrigin, async (_request, resp
     response.json({
       enabled: true,
       state: live.state,
+      providerState: trainingProviderState(),
       model: { version: 'Nados v1.1', base: 'gemma-2-9b (QLoRA)', state: live.state, done: live.done },
       params: { trainable: live.paramsTrainable, total: live.paramsTotal, percent: live.paramsPercent },
+      targetParams,
+      growth: getTrainingProgress(),
       progress: { stepsDone: live.stepsDone, stepsTotal: live.stepsTotal, gpu: live.gpu },
       dataset: { examples: stats.examplesTotal, outputs: stats.outputsTotal, accepted: stats.outputsAccepted },
       scheduler: { enabled: schedulerEnabled, intervalMs: schedulerIntervalMs, runs: schedulerRuns, lastRunAt: schedulerLastRun },
@@ -459,9 +542,14 @@ app.get('/api/training/kaggle/output', requireLocalOrigin, async (_request, resp
 
 app.get('/api/training/stats', requireLocalOrigin, async (_request, response) => {
   const supabase = await getTrainingStats()
+  if (supabase?.outputsAccepted) seedTrainingProgress({ accepted: Number(supabase.outputsAccepted) || 0, examples: Number(supabase.examplesTotal) || 0 })
   response.json({
     supabase,
     trainingProvider: TRAINING_PROVIDER_STATE,
+    providerState: trainingProviderState(),
+    progress: getTrainingProgress(),
+    targetParams,
+    continuity: { twentyFourSeven: schedulerEnabled, note: 'يعمل باستمرار 24/7 ما دام خادم Nados قيد التشغيل.' },
     scheduler: { enabled: schedulerEnabled, intervalMs: schedulerIntervalMs, lastRunAt: schedulerLastRun, runs: schedulerRuns },
   })
 })
@@ -510,6 +598,9 @@ let schedulerIntervalMs = Math.max(60_000, Number(process.env.NADOS_TRAINING_INT
 let schedulerLastRun = null
 let schedulerRuns = 0
 let schedulerSeedIndex = 0
+// Target scale for the Nados model program (parameters). Configurable so the
+// training center can show progress toward the 900B goal.
+const targetParams = Number(process.env.NADOS_TARGET_PARAMS) || 900_000_000_000
 
 async function runSchedulerCycle() {
   try {
@@ -522,15 +613,26 @@ async function runSchedulerCycle() {
     ])
     schedulerLastRun = new Date().toISOString()
     schedulerRuns += 1
-    console.log(`[training-scheduler] cycle ${schedulerRuns}: ${result.status} | persisted ${persistResults.filter(Boolean).length}`)
+    const acceptedDelta = (result.outputs || []).filter((item) => item.ok && item.evaluation?.accepted).length
+    recordTrainingCycle({ acceptedDelta, quality: result.best?.evaluation?.qualityScore || 0 })
+    console.log(`[training-scheduler] cycle ${schedulerRuns}: ${result.status} | persisted ${persistResults.filter(Boolean).length} | +${acceptedDelta} accepted`)
   } catch (error) {
     schedulerLastRun = new Date().toISOString()
+    recordTrainingCycle({ acceptedDelta: 0 })
     console.log(`[training-scheduler] cycle failed: ${String(error?.message || error).slice(0, 120)}`)
   }
 }
 
+async function seedTrainingFromDataset() {
+  try {
+    const stats = await getTrainingStats()
+    if (stats?.outputsAccepted) seedTrainingProgress({ accepted: Number(stats.outputsAccepted) || 0, examples: Number(stats.examplesTotal) || 0 })
+  } catch {}
+}
+
 function startTrainingScheduler() {
   if (!schedulerEnabled) return
+  void seedTrainingFromDataset()
   const timer = setInterval(() => { void runSchedulerCycle() }, schedulerIntervalMs)
   if (typeof timer.unref === 'function') timer.unref()
   void runSchedulerCycle()
@@ -542,9 +644,26 @@ app.post('/api/providers/stats/reset', requireLocalOrigin, (request, response) =
   response.json({ ok: true })
 })
 
+function isLoopbackHostname(value) {
+  const raw = String(value || '').trim().toLowerCase()
+  if (!raw) return false
+  let host = raw
+  try { host = new URL(raw).hostname } catch { host = raw.split(':')[0] }
+  host = host.replace(/^\[|\]$/g, '')
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1'
+}
+
+// "Local only" means loopback Host AND (when the browser tells us) a loopback
+// Origin/Referer. The Host header alone is client-controlled and is not a CSRF
+// boundary, so a cross-site request from a visited page must be rejected.
 function isLocalRequest(request) {
   const host = String(request.get('host') || '').toLowerCase().split(':')[0]
-  return host === '127.0.0.1' || host === 'localhost' || host === '::1'
+  if (!(host === '127.0.0.1' || host === 'localhost' || host === '::1')) return false
+  const origin = request.get('origin')
+  if (origin && !isLoopbackHostname(origin)) return false
+  const referer = request.get('referer')
+  if (!origin && referer && !isLoopbackHostname(referer)) return false
+  return true
 }
 
 function requireLocalOrigin(request, response, next) {
@@ -590,7 +709,40 @@ app.get('/api/providers', requireLocalOrigin, (_request, response) => {
 
 app.get('/api/models', (request, response) => {
   const models = availableModels()
-  response.json({ models: isLocalRequest(request) ? models : models.filter((item) => item.providerId === 'auto') })
+  response.json({ models, chatDefault: models.find((item) => item.chatDefault)?.id || null })
+})
+
+let nvidiaRefreshInFlight = false
+
+app.get('/api/models/nvidia', requireLocalOrigin, (_request, response) => {
+  response.json(nvidiaCatalogSummary())
+})
+
+app.post('/api/models/nvidia/refresh', requireLocalOrigin, async (request, response) => {
+  if (nvidiaRefreshInFlight) return response.status(409).json({ error: 'فحص نماذج NVIDIA قيد التنفيذ بالفعل.' })
+  nvidiaRefreshInFlight = true
+  try {
+    const catalog = await fetchNvidiaCatalog({ force: true })
+    const report = await probeNvidiaCatalog({
+      models: catalog.models,
+      concurrency: Number(request.body?.concurrency) || 6,
+    })
+    response.json({
+      ok: true,
+      fetchedAt: catalog.fetchedAt,
+      total: report.total,
+      working: report.working,
+      failed: report.failed,
+      failureKinds: report.failureKinds,
+      workingModels: report.results.filter((item) => item.ok).map((item) => item.model),
+      workDefaultModel: report.workDefaultModel,
+      chatDefaultModel: report.chatDefaultModel,
+    })
+  } catch (error) {
+    response.status(500).json({ error: String(error?.message || error).slice(0, 250) })
+  } finally {
+    nvidiaRefreshInFlight = false
+  }
 })
 
 app.post('/api/providers', requireLocalOrigin, (request, response) => {
@@ -645,7 +797,6 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
       webSearch: connectedIds.has('gemini') || connectedIds.has('groq') || connectedIds.has('openai'),
       vision: connectedIds.has('gemini') || connectedIds.has('openai') || (connectedIds.has('openrouter') && Boolean(process.env.OPENROUTER_VISION_MODEL)) || (connectedIds.has('nvidia') && Boolean(process.env.NVIDIA_VISION_MODEL)),
       video: connectedIds.has('gemini'),
-      images: Boolean(openai || hasProviderApiKey('gemini') || hasProviderApiKey('huggingface')),
       transcription: Boolean(openai || hasProviderApiKey('groq')),
       speech: Boolean(openai || hasProviderApiKey('gemini')),
       computer: process.platform === 'win32' && hasProviderApiKey('gemini'),
@@ -656,10 +807,14 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
     const customPrompt = String(request.body?.system_prompt || '').trim().slice(0, 2000)
     const userTemperature = Number(request.body?.temperature)
     const providerMode = effectiveProviderMode(mode, message, Boolean(chatFiles.length))
-    const baseInstructions = enableThinking
+    const liveNow = liveContext()
+    const baseInstructions = `${liveNow}\n\n${enableThinking
       ? `${modeInstructions(providerMode, features, chatFiles[0] || null)}\n\nفكّر خطوة بخطوة داخلياً قبل الإجابة: حلل الطلب، قسّمه، ثم قدّم إجابة دقيقة ومنظمة.`
-      : modeInstructions(providerMode, features, chatFiles[0] || null)
+      : modeInstructions(providerMode, features, chatFiles[0] || null)}`
     const instructions = customPrompt ? `${baseInstructions}\n\nتعليمات المستخدم المخصصة (التزم بها حرفياً):\n${customPrompt}` : baseInstructions
+    // The live date is also placed in the user turn: some models weight the user
+    // message more heavily and would otherwise answer with a stale date.
+    const modelMessage = `${liveNow}\n\n${message}`
     const selectedModel = resolveModelSelection(model)
 
     if (isNadosIdentityQuestion(message)) {
@@ -672,14 +827,60 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
       return
     }
 
-    if (selectedModel.providerId === 'nados') {
-      // السرعة أولاً: المعلمون السريعون → النموذج المحلي المدرَّب احتياطاً
+if (selectedModel.providerId === 'nados') {
+      // Deep Research mode for research/academic
+      if (providerMode === 'research' || providerMode === 'academic') {
+        const deepResult = await callDeepResearch({ message: modelMessage, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions, modelOverride: selectedModel.model })
+        if (deepResult?.text) {
+          sendEvent(response, { type: 'meta', provider: 'nados' })
+          if (deepResult.thinking) {
+            sendEvent(response, { type: 'thinking', steps: deepResult.thinking })
+          }
+          for (let index = 0; index < deepResult.text.length; index += 72) {
+            sendEvent(response, { type: 'delta', delta: deepResult.text.slice(index, index + 72) })
+          }
+          sendEvent(response, {
+            type: 'done',
+            reply: {
+              ...splitAnswer(deepResult.text),
+              sources: decorateSources(deepResult.sources),
+              thinking: deepResult.thinking || [],
+              deepResearch: true,
+              provider: 'nados',
+              demo: false,
+              usage: deepResult.usage,
+            },
+          })
+          saveConversation({ message, reply: deepResult.text, mode: providerMode, provider: deepResult.provider || 'deep-research', sources: deepResult.sources || [] })
+          return response.end()
+        }
+      }
+
+      // Model variant: "v1.1" (default) prefers the real trained Nados artifact
+      // when connected, falling back to the fast teachers otherwise; "v1.0"
+      // always uses the classic teachers pipeline.
+      const variant = String(request.body?.variant || 'v1.1').toLowerCase() === 'v1.0' ? 'v1.0' : 'v1.1'
+      const preferLocal = variant === 'v1.1' && providerMode !== 'research' && providerMode !== 'academic' && await localModelStatus()
+      if (preferLocal) {
+        try {
+          const localResult = await callLocalNados({ message, files: chatFiles, history, instructions, model: selectedModel.model, temperature: Number.isFinite(userTemperature) ? userTemperature : undefined })
+          sendEvent(response, { type: 'meta', provider: 'nados', model: 'Nados v1.1', variant: 'v1.1' })
+          for (let index = 0; index < localResult.text.length; index += 72) sendEvent(response, { type: 'delta', delta: localResult.text.slice(index, index + 72) })
+          sendEvent(response, { type: 'done', reply: { ...splitAnswer(localResult.text), sources: [], provider: 'nados', model: 'Nados v1.1', variant: 'v1.1', demo: false, usage: localResult.usage } })
+          saveConversation({ message, reply: localResult.text, mode: providerMode, provider: 'nados-local', sources: [] })
+          return response.end()
+        } catch (localFirstError) {
+          if (!/NADOS_LOCAL_LLM_OFFLINE/.test(String(localFirstError?.message || ''))) throw localFirstError
+        }
+      }
+
+      // السرعة أولاً: المعلمون السريعون → النموذج المحلي المدرَّب احتياطياً
       let externalResult = null
       try {
-        externalResult = await callExternalProviders({ message, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions })
+        externalResult = await callExternalProviders({ message: modelMessage, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions })
       } catch {}
       if (externalResult?.text) {
-        sendEvent(response, { type: 'meta', provider: 'nados' })
+        sendEvent(response, { type: 'meta', provider: 'nados', model: variant === 'v1.0' ? 'Nados v1.0' : 'Nados v1.1', variant })
         for (let index = 0; index < externalResult.text.length; index += 72) {
           sendEvent(response, { type: 'delta', delta: externalResult.text.slice(index, index + 72) })
         }
@@ -689,6 +890,8 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
             ...splitAnswer(externalResult.text),
             sources: decorateSources(externalResult.sources),
             provider: 'nados',
+            model: variant === 'v1.0' ? 'Nados v1.0' : 'Nados v1.1',
+            variant,
             demo: false,
             usage: externalResult.usage,
           },
@@ -725,7 +928,7 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
     }
 
     if (selectedModel.providerId !== 'auto' && selectedModel.providerId !== 'openai') {
-      const selected = await callSelectedProvider({ message, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions }, selectedModel.providerId, selectedModel.model)
+      const selected = await callSelectedProvider({ message: modelMessage, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions }, selectedModel.providerId, selectedModel.model)
       sendEvent(response, { type: 'meta', provider: 'nados' })
       for (let index = 0; index < selected.text.length; index += 72) sendEvent(response, { type: 'delta', delta: selected.text.slice(index, index + 72) })
       sendEvent(response, { type: 'done', reply: { ...splitAnswer(selected.text), sources: decorateSources(selected.sources), provider: 'nados', demo: false, usage: selected.usage } })
@@ -822,27 +1025,6 @@ app.post('/api/chat/stream', upload.array('files', 5), async (request, response)
   }
 })
 
-app.post('/api/images', async (request, response) => {
-  try {
-    const prompt = String(request.body.prompt || '').trim()
-    const style = String(request.body.style || 'واقعي').slice(0, 80)
-    const ratio = ['square', 'landscape', 'portrait'].includes(request.body.ratio) ? request.body.ratio : 'square'
-    if (!prompt || prompt.length > 4000) return response.status(400).json({ error: 'وصف الصورة غير صالح.' })
-    const imagePrompt = `${prompt}\nالأسلوب المطلوب: ${style}. بدون نصوص أو شعارات إلا إذا طلب المستخدم ذلك صراحة.`
-    if (openai) {
-      const sizes = { square: '1024x1024', landscape: '1536x1024', portrait: '1024x1536' }
-      const result = await openai.images.generate({ model: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', prompt: imagePrompt, size: sizes[ratio], quality: 'medium' })
-      const base64 = result.data?.[0]?.b64_json
-      if (!base64) throw new Error('لم تُرجع خدمة الصور نتيجة قابلة للعرض.')
-      return response.json({ demo: false, dataUrl: `data:image/png;base64,${base64}` })
-    }
-    if (hasProviderApiKey('gemini') || hasProviderApiKey('huggingface')) return response.json({ demo: false, dataUrl: await generateImageWithProviders(imagePrompt, ratio) })
-    response.json({ demo: true, dataUrl: null })
-  } catch (error) {
-    response.status(Number(error.status || 500)).json({ error: error.message || 'تعذّر إنشاء الصورة.' })
-  }
-})
-
 app.post('/api/audio/transcribe', upload.single('audio'), async (request, response) => {
   try {
     if (!request.file) return response.status(400).json({ error: 'لم يتم إرسال تسجيل صوتي.' })
@@ -883,6 +1065,300 @@ app.post('/api/audio/speech', async (request, response) => {
   }
 })
 
+// ============================ WORK / REAL EXECUTION ============================
+// Project-scoped workspaces, real filesystem tools, real terminal, verification,
+// preview and ZIP export. Every response reflects actual tool results.
+
+const workRateBuckets = new Map()
+function workRateLimit(request, response, next) {
+  const ip = request.ip || request.socket?.remoteAddress || 'local'
+  const now = Date.now()
+  const windowMs = 60_000
+  const max = Number(process.env.NADOS_WORK_RATE_LIMIT) || 300
+  // Evict expired buckets so the map cannot grow without bound.
+  if (workRateBuckets.size > 5_000) {
+    for (const [key, entry] of workRateBuckets) {
+      if (now > entry.resetAt) workRateBuckets.delete(key)
+    }
+  }
+  const bucket = workRateBuckets.get(ip) || { count: 0, resetAt: now + windowMs }
+  if (now > bucket.resetAt) { bucket.count = 0; bucket.resetAt = now + windowMs }
+  bucket.count += 1
+  workRateBuckets.set(ip, bucket)
+  if (bucket.count > max) return response.status(429).json({ error: 'عدد الطلبات كبير — انتظر قليلاً ثم أعد المحاولة.' })
+  next()
+}
+
+function workUser(request) {
+  return normalizeWorkUser(request.get('x-nados-user') || request.query.userId || 'local-user')
+}
+
+// Enforces that the project exists and belongs to the caller. Returns 404 (not
+// 403) for foreign projects so ids cannot be enumerated.
+function requireWorkProject(request, response, next) {
+  const project = getProject(request.params.id)
+  if (!project || !projectBelongsTo(project.id, workUser(request))) {
+    return response.status(404).json({ error: 'المشروع غير موجود.' })
+  }
+  request.workProject = project
+  next()
+}
+
+function workError(response, error, fallback = 'فشل تنفيذ العملية.') {
+  const message = String(error?.message || error).slice(0, 300)
+  return response.status(Number(error?.status) || 400).json({ error: message || fallback, code: error?.code || null })
+}
+
+function publicRun(run) {
+  return {
+    projectId: run.projectId, taskId: run.taskId, status: run.status, task: run.task,
+    summary: run.summary, error: run.error, startedAt: run.startedAt, finishedAt: run.finishedAt,
+    durationMs: run.durationMs || null, filesChanged: run.filesChanged || [],
+    steps: (run.steps || []).map((step) => ({
+      id: step.id, type: step.type, status: step.status, description: step.description,
+      tool: step.tool, arguments: step.arguments, result: step.result, error: step.error,
+      startedAt: step.startedAt, completedAt: step.completedAt, durationMs: step.durationMs,
+    })),
+  }
+}
+
+app.get('/api/work/status', async (request, response) => {
+  const local = isLocalRequest(request)
+  const probe = local ? await probeExecution() : { ok: false, error: 'وضع العمل متاح من النسخة المحلية فقط (تنفيذ الملفات والأوامر).' }
+  response.json({
+    executionAvailable: local && probe.ok,
+    executionError: probe.error,
+    localOnly: true,
+    previewOrigin: getPreviewOrigin(),
+    provider: sandboxInfo.provider,
+    platform: sandboxInfo.platform,
+    workspacesRoot: sandboxInfo.root,
+    limits: SANDBOX_LIMITS,
+    persistence: workPersistenceEnabled(),
+    providers: availableWorkProviders(),
+    workModel: workModelLabel(),
+    workTargets: availableWorkTargets().map((target) => ({ providerId: target.providerId, model: target.model })),
+  })
+})
+
+app.get('/api/work/projects', requireLocalOrigin, workRateLimit, async (request, response) => {
+  try {
+    const projects = await listProjectsForUser(workUser(request))
+    response.json({ projects, persistence: workPersistenceEnabled() })
+  } catch (error) { workError(response, error, 'تعذّر جلب المشاريع.') }
+})
+
+app.post('/api/work/projects', requireLocalOrigin, workRateLimit, async (request, response) => {
+  try {
+    const { name, stack, task } = request.body || {}
+    const project = await createProject({ name, stack, task, userId: workUser(request) })
+    const files = await projectList(project.id).catch(() => ({ total: 0 }))
+    response.status(201).json({ project, fileCount: files.total, previewUrl: previewUrlFor(project.id) })
+  } catch (error) { workError(response, error, 'تعذّر إنشاء المشروع.') }
+})
+
+app.get('/api/work/projects/:id', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  const project = request.workProject
+  try {
+    // One tree walk yields both the tree and the file/byte stats.
+    const tree = await projectTree(project.id).catch(() => ({ tree: [], files: 0, bytes: 0 }))
+    response.json({
+      project,
+      tree: tree.tree,
+      stats: { files: tree.files || 0, bytes: tree.bytes || 0 },
+      changes: listFileChanges(project.id),
+      run: publicRun(workRunState(project.id)),
+      server: getServer(project.id),
+      previewUrl: previewUrlFor(project.id),
+    })
+  } catch (error) { workError(response, error, 'تعذّر جلب المشروع.') }
+})
+
+app.delete('/api/work/projects/:id', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    await stopServer(request.params.id)
+    response.json(await deleteProject(request.params.id))
+  } catch (error) { workError(response, error, 'تعذّر حذف المشروع.') }
+})
+
+app.get('/api/work/projects/:id/tree', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    const result = await projectTree(request.params.id, String(request.query.dir || '.'))
+    response.json({ tree: result.tree, dir: result.dir, files: result.files, bytes: result.bytes })
+  } catch (error) { workError(response, error, 'تعذّر قراءة شجرة المشروع.') }
+})
+
+app.get('/api/work/projects/:id/files', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    const path = String(request.query.path || '')
+    if (!path) {
+      const result = await projectList(request.params.id, String(request.query.dir || '.'))
+      return response.json({ dir: result.dir, files: result.files, total: result.total })
+    }
+    const file = await projectReadFile(request.params.id, path)
+    response.json({ path: file.path, content: file.content, bytes: file.bytes, modifiedAt: file.modifiedAt })
+  } catch (error) { workError(response, error, 'تعذّر قراءة الملف.') }
+})
+
+app.put('/api/work/projects/:id/files', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    const { path, content } = request.body || {}
+    if (!path) return response.status(400).json({ error: 'مسار الملف مطلوب.' })
+    const result = await projectWriteFile(request.params.id, path, content ?? '', { source: 'user' })
+    response.json({ tool: 'write_file', status: 'success', path: result.path, bytes: result.bytes, created: result.created, replaced: result.replaced })
+  } catch (error) {
+    const failed = { tool: 'write_file', status: 'error', path: request.body?.path || null, error: String(error?.message || error).slice(0, 300) }
+    response.status(400).json(failed)
+  }
+})
+
+app.post('/api/work/projects/:id/files', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  const { action, path, to, name } = request.body || {}
+  try {
+    if (action === 'create_file') {
+      const result = await projectWriteFile(request.params.id, path, String(request.body?.content ?? ''), { source: 'user' })
+      return response.status(201).json({ tool: 'create_file', status: 'success', path: result.path, bytes: result.bytes })
+    }
+    if (action === 'create_dir') {
+      const result = await projectCreateDirectory(request.params.id, path)
+      return response.status(201).json({ tool: 'create_directory', status: 'success', path: result.path })
+    }
+    if (action === 'rename' || action === 'move') {
+      const destination = to || (path?.includes('/') ? `${path.slice(0, path.lastIndexOf('/') + 1)}${name}` : name)
+      if (!destination) return response.status(400).json({ error: 'الاسم الجديد مطلوب.' })
+      const result = await projectMoveFile(request.params.id, path, destination, { source: 'user' })
+      return response.json({ tool: 'move_file', status: 'success', from: result.from, to: result.to })
+    }
+    if (action === 'copy') {
+      const result = await projectCopyFile(request.params.id, path, to)
+      return response.json({ tool: 'copy_file', status: 'success', from: result.from, to: result.to })
+    }
+    if (action === 'delete') {
+      const result = await projectDeleteFile(request.params.id, path, { source: 'user' })
+      return response.json({ tool: 'delete_file', status: 'success', path: result.path, deleted: true })
+    }
+    response.status(400).json({ error: `إجراء غير معروف: ${action}` })
+  } catch (error) { workError(response, error, 'تعذّر تنفيذ العملية على الملف.') }
+})
+
+app.get('/api/work/projects/:id/files/diff', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    const diff = getFileDiff(request.params.id, String(request.query.path || ''))
+    if (!diff) return response.status(404).json({ error: 'لا توجد تغييرات مسجّلة لهذا الملف.' })
+    response.json(diff)
+  } catch (error) { workError(response, error, 'تعذّر جلب الفروقات.') }
+})
+
+app.get('/api/work/projects/:id/changes', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    response.json({ changes: listFileChanges(request.params.id) })
+  } catch (error) { workError(response, error, 'تعذّر جلب التغييرات.') }
+})
+
+app.get('/api/work/projects/:id/search', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    const query = String(request.query.q || '')
+    if (!query) return response.status(400).json({ error: 'كلمة البحث مطلوبة.' })
+    response.json(await projectSearch(request.params.id, query, String(request.query.dir || '.')))
+  } catch (error) { workError(response, error, 'تعذّر البحث.') }
+})
+
+app.post('/api/work/projects/:id/command', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    const cmd = String(request.body?.cmd || '').trim()
+    if (!cmd) return response.status(400).json({ error: 'الأمر مطلوب.' })
+    const result = await executeCommandTool(request.params.id, cmd)
+    response.json(result)
+  } catch (error) { workError(response, error, 'تعذّر تنفيذ الأمر.') }
+})
+
+app.post('/api/work/projects/:id/start', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    const project = request.workProject
+    const command = String(request.body?.command || '').trim() || await detectStartCommand(project.id)
+    if (!command) {
+      return response.status(400).json({ error: 'لا يوجد أمر تشغيل معرّف لهذا المشروع — المعاينة الثابتة متاحة من تبويب المعاينة.' })
+    }
+    const result = await startServer(project.id, command)
+    response.status(result.started ? 200 : 502).json({ ...result, previewUrl: previewUrlFor(project.id) })
+  } catch (error) { workError(response, error, 'تعذّر تشغيل خادم المشروع.') }
+})
+
+app.post('/api/work/projects/:id/stop', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    response.json(await stopServer(request.params.id))
+  } catch (error) { workError(response, error, 'تعذّر إيقاف الخادم.') }
+})
+
+app.post('/api/work/projects/:id/control', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  const action = String(request.body?.action || '')
+  if (action === 'stop') return response.json(workStop(request.params.id))
+  if (action === 'pause') return response.json(workPause(request.params.id))
+  if (action === 'resume') return response.json(workResume(request.params.id))
+  response.status(400).json({ error: `إجراء غير معروف: ${action}` })
+})
+
+app.post('/api/work/projects/:id/verify', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    const verification = await verifyProjectWorkspace(request.params.id, () => {})
+    response.json(verification)
+  } catch (error) { workError(response, error, 'تعذّر التحقق من المشروع.') }
+})
+
+app.post('/api/work/projects/:id/agent', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  response.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  })
+  const send = (event) => { try { response.write(`data: ${JSON.stringify(event)}\n\n`) } catch {} }
+  const heartbeat = setInterval(() => { try { response.write(': nados-work-heartbeat\n\n') } catch {} }, 15_000)
+  let clientClosed = false
+  response.on('close', () => {
+    if (response.writableEnded) return
+    clientClosed = true
+    workStop(request.params.id)
+  })
+  try {
+    const task = String(request.body?.task || '').trim()
+    if (!task) {
+      send({ type: 'error', message: 'نص المهمة مطلوب.' })
+      return response.end()
+    }
+    const result = await runWorkTaskWithRecovery({ projectId: request.params.id, task, onEvent: send, userId: workUser(request) })
+    if (!clientClosed) send({ type: 'task_completed', ...result })
+    response.end()
+  } catch (error) {
+    send({ type: 'error', message: String(error?.message || error).slice(0, 250) })
+    response.end()
+  } finally {
+    clearInterval(heartbeat)
+  }
+})
+
+app.get('/api/work/projects/:id/zip', requireLocalOrigin, workRateLimit, requireWorkProject, async (request, response) => {
+  try {
+    const archive = await exportZip(request.params.id)
+    response.set('X-Nados-Archive-Bytes', String(archive.bytes))
+    response.set('X-Nados-Archive-Entries', String(archive.entries))
+    response.download(archive.path, archive.filename, async (error) => {
+      if (error && !response.headersSent) response.status(500).json({ error: 'تعذّر إرسال الأرشيف.' })
+      const { rm } = await import('node:fs/promises')
+      await rm(archive.path, { force: true }).catch(() => {})
+    })
+  } catch (error) { workError(response, error, 'تعذّر تصدير المشروع كأرشيف ZIP.') }
+})
+
+// Preview moved to a dedicated loopback origin; answer explicitly instead of
+// letting the SPA fallback serve the app shell for the legacy path.
+app.use('/api/work/projects/:id/preview', (request, response) => {
+  response.status(404).json({
+    error: 'المعاينة تُقدَّم الآن من أصل منفصل عبر previewUrl.',
+    previewUrl: previewUrlFor(request.params.id),
+  })
+})
+
 app.use((error, _request, response, _next) => {
   if (error instanceof multer.MulterError) {
     const message = error.code === 'LIMIT_FILE_SIZE'
@@ -905,8 +1381,20 @@ if (existsSync(dist)) {
   })
 }
 
-app.listen(port, '127.0.0.1', () => {
+const previewOrigin = await startPreviewServer()
+const rehydratedCount = await rehydrateProjectsFromDisk()
+if (rehydratedCount) console.log(`[nados-work] rehydrated ${rehydratedCount} project(s) from disk`)
+
+app.listen(port, host, () => {
   const connected = providerStatuses().filter((item) => item.configured).map((item) => item.name)
-  console.log(`Nados AI server listening on http://127.0.0.1:${port} (${connected.join(', ') || 'demo mode'})`)
+  console.log(`Nados AI server listening on http://${host}:${port} (${connected.join(', ') || 'demo mode'})`)
+  console.log(`[nados-work] preview origin ${previewOrigin}, workspaces ${sandboxInfo.root}`)
   startTrainingScheduler()
 })
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    stopPreviewServer()
+    void stopAllServers().finally(() => process.exit(0))
+  })
+}

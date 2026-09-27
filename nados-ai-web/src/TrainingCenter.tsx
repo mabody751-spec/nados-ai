@@ -20,6 +20,20 @@ function formatInterval(ms: number) {
   return minutes >= 60 ? `${(minutes / 60).toFixed(1)} ساعة` : `${minutes} دقيقة`
 }
 
+function formatParams(value: number | undefined | null) {
+  if (value === undefined || value === null) return 'UNKNOWN'
+  if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`
+  if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
+  if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`
+  return value.toLocaleString('en-US')
+}
+
+const providerStateLabels: Record<string, string> = {
+  LEARNING: 'يتعلّم الآن (24/7)',
+  TARGET_REACHED: 'بلغ الهدف',
+  WAITING_FOR_CREDENTIALS: 'بانتظار المزوّد',
+}
+
 export function TrainingCenter() {
   const [data, setData] = useState<TrainingCenterData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -45,6 +59,11 @@ export function TrainingCenter() {
 
   useEffect(() => { void refresh() }, [])
 
+  useEffect(() => {
+    const timer = window.setInterval(() => { void refresh() }, 15_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
   const runCycle = async () => {
     setGenerating(true)
     setGeneratingResult(null)
@@ -60,6 +79,9 @@ export function TrainingCenter() {
   }
 
   if (loading) return <div className="training-center"><p className="training-note">جارٍ تحميل مركز التدريب...</p></div>
+
+  const growth = data?.kaggle?.growth || data?.growth
+  const providerState = data?.kaggle?.providerState || data?.providerState || data?.trainingProvider
 
   return (
     <section className="training-center">
@@ -151,6 +173,41 @@ export function TrainingCenter() {
                     <small>قابلة للتدريب: {data.kaggle.params.percent}% من {formatNumber(data.kaggle.params.total)}</small>
                   </div>
                 )}
+                {growth && (
+                  <div className="training-growth">
+                    <span>النمو الفعلي للنموذج (أساس + مكتسب)</span>
+                    <strong className="accepted" dir="ltr">{formatParams(growth.currentParams)}</strong>
+                    <small dir="ltr">الأساس {formatParams(growth.baseParams)} · قابلة للتدريب {formatParams(growth.trainableParams)}</small>
+                    <small>الجيل: {growth.milestoneName} · دورات التعلّم: {growth.cycles} · أمثلة مقبولة: {formatNumber(growth.accepted)}</small>
+                    <div className="training-progress-bar"><div style={{ width: `${Math.max(1, Math.min(100, growth.percent))}%` }} /></div>
+                    <small dir="ltr">{formatParams(growth.currentParams)} / {formatParams(growth.targetParams)} · {growth.percent}%</small>
+                    {growth.nextMilestone && (
+                      <small>المرحلة التالية: {growth.nextMilestone.name} — يتبقى {formatNumber(growth.nextMilestone.acceptedNeeded)} مثال{growth.nextMilestone.cyclesToNext ? ` · ~${growth.nextMilestone.cyclesToNext} دورة` : ''}</small>
+                    )}
+                    {growth.updatedAt && <small>آخر تحديث للنمو: {new Date(growth.updatedAt).toLocaleString('ar')}</small>}
+                  </div>
+                )}
+                {growth && (
+                  <div className="training-roadmap">
+                    <span>خارطة الطريق إلى 900B</span>
+                    <div className="roadmap-track">
+                      {growth.roadmap.map((step) => (
+                        <div key={step.id} className={`roadmap-step ${step.id === growth.milestoneId ? 'current' : step.params <= growth.currentParams ? 'done' : ''}`}>
+                          <i />
+                          <strong dir="ltr">{formatParams(step.params)}</strong>
+                          <small>{step.name.split('·').pop()?.trim()}</small>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <span>حالة التدريب</span>
+                  <strong className={providerState === 'LEARNING' ? 'running' : providerState === 'TARGET_REACHED' ? 'accepted' : 'pending'}>
+                    {providerState ? (providerStateLabels[providerState] || providerState) : 'UNKNOWN'}
+                  </strong>
+                  <small>مزوّد: Kaggle — GPU مجاني (Free-First)</small>
+                </div>
                 {data.kaggle?.progress && (
                   <div>
                     <span>التقدم</span>
@@ -159,7 +216,7 @@ export function TrainingCenter() {
                     {data.kaggle.progress.stepsDone !== null && <div className="training-progress-bar"><div style={{ width: `${Math.round((data.kaggle.progress.stepsDone / data.kaggle.progress.stepsTotal) * 100)}%` }} /></div>}
                   </div>
                 )}
-                <div><span>مزوّد التدريب</span><strong className="accepted">Kaggle — GPU مجاني (Free-First)</strong></div>
+                <div><span>الاستمرارية</span><strong className={data.continuity?.twentyFourSeven ? 'accepted' : 'pending'}>{data.continuity?.twentyFourSeven ? 'تشغيل 24/7 ✓' : 'متوقف'}</strong><small>{data.continuity?.note || 'فعّله بـ NADOS_TRAINING_SCHEDULER=on'}</small></div>
                 <div><span>المجدول</span><strong>{data.scheduler.enabled ? `يعمل كل ${formatInterval(data.scheduler.intervalMs)}` : 'متوقف'}</strong><small>{data.scheduler.enabled ? `الدورات: ${data.scheduler.runs} · الأخيرة: ${data.scheduler.lastRunAt ? new Date(data.scheduler.lastRunAt).toLocaleTimeString('ar') : '-'}` : 'فعّله بـ NADOS_TRAINING_SCHEDULER=on'}</small></div>
               </div>
             </div>

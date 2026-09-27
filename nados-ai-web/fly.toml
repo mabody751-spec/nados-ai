@@ -1,0 +1,32 @@
+# Fly.io config for the Nados API (Phase 0).
+# Deploy: fly launch --no-deploy --copy-config  →  fly secrets set ...  →  fly deploy
+app = "nados-api"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8787"
+  NODE_ENV = "production"
+  NADOS_PROVIDER_ORDER = "nvidia,xkiro-qwen-38-max,gemini,groq,nvidia-glm-53"
+  NADOS_PROVIDER_MODE = "sequential"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "25s"
+    method = "GET"
+    path = "/healthz"
+
+[mounts]
+  source = "nados_data"
+  destination = "/app/.nados"

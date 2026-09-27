@@ -2,10 +2,28 @@ import { isModelSelectionError, modelPool } from './modelPools.mjs'
 import { hasProviderApiKey, providerApiKeys } from './providerKeys.mjs'
 import { computeMaxTokens, descendingBudgets, estimateTokens, fitMessageToContext, historyCharacterBudget, isTokenBudgetError, modelTokenLimits, searchToolReserve } from './tokenBudget.mjs'
 import { fetchWebResults, webResultsInstructions } from './webSearch.mjs'
+import { deepSearch, deepResearch } from './deepResearch.mjs'
+import { buildChainOfThoughtPrompt, parseThinkingOutput, createThinkingSession } from './thinking.mjs'
 import { findRuntimeProvider, publicRuntimeProviders, removeRuntimeProvider, runtimeProviders } from './providerStore.mjs'
 
 const SEARCH_MODES = new Set(['web', 'research', 'academic'])
 const HUGE_MESSAGE_TOKENS = 90_000
+
+// Health of the external Nados v1.1 inference server, cached briefly so requests
+// that prefer the trained model don't pay the health-check cost every time.
+let localModelCache = { at: 0, ok: false }
+export async function localModelStatus({ force = false } = {}) {
+  const baseUrl = String(process.env.NADOS_LOCAL_LLM_URL || 'http://127.0.0.1:8080').trim().replace(/\/$/, '')
+  const now = Date.now()
+  if (!force && now - localModelCache.at < 60_000) return localModelCache.ok
+  try {
+    const health = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(2500) })
+    localModelCache = { at: now, ok: health.ok }
+  } catch {
+    localModelCache = { at: now, ok: false }
+  }
+  return localModelCache.ok
+}
 
 export async function callLocalNados({ message, files, history = [], instructions, model, temperature }) {
   const baseUrl = String(process.env.NADOS_LOCAL_LLM_URL || 'http://127.0.0.1:8080').trim().replace(/\/$/, '')
@@ -20,10 +38,14 @@ export async function callLocalNados({ message, files, history = [], instruction
   const fittedContent = typeof rawContent === 'string'
     ? fitMessageToContext({ model, instructions, history: fittedHistory, message: rawContent })
     : message
+  // Gemma-based Nados builds have no system role in their chat template, so the
+  // instructions are folded into the user turn instead of sent as a system message.
+  const userContent = instructions && typeof fittedContent === 'string'
+    ? `${instructions}\n\n${fittedContent}`
+    : fittedContent
   const messages = [
-    { role: 'system', content: instructions },
     ...fittedHistory.map((item) => ({ role: item.role, content: item.content })),
-    { role: 'user', content: fittedContent },
+    { role: 'user', content: userContent },
   ]
   const data = await fetchJson(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
@@ -507,6 +529,60 @@ function groqSearchInstructions(mode) {
   ].join('\n')
 }
 
+// The UI renders thinking as structured steps; the research pipeline produces
+// plain progress lines, so wrap them with a label for consistent display.
+function toThinkingSteps(lines) {
+  return lines.map((line, index) => ({ type: 'research', label: `خطوة ${index + 1}`, content: String(line) }))
+}
+
+export async function callDeepResearch(context) {
+  const { message, mode, history = [], instructions } = context
+  if (mode !== 'research' && mode !== 'academic') return null
+
+  const thinking = []
+  try {
+    const deepResult = await deepResearch(message, {
+      maxIterations: mode === 'academic' ? 4 : 3,
+      thinking,
+    })
+    const searchResult = deepResult.searchResult
+
+    if (!searchResult || searchResult.sources.length === 0) {
+      thinking.push('⚠️ لم أجد مصادر كافية، سأجيب من المعرفة العامة.')
+      const fallback = await callExternalProviders({ message, history, mode: 'create', file: context.file, files: context.files, instructions })
+      if (!fallback?.text) return null
+      return { ...fallback, thinking: toThinkingSteps(thinking), deepResearch: true, sources: [], iterations: [] }
+    }
+
+    thinking.push(`🧩 تركيب الإجابة النهائية من ${searchResult.sources.length} مصدر...`)
+    const topSources = searchResult.sources.slice(0, 8)
+    const synthesisMessage = [
+      `السؤال: ${message}`,
+      '',
+      'المصادر الموثوقة التي جمعتها (استشهد بأرقامها):',
+      ...topSources.map((source, index) => `[${index + 1}] ${source.title} — ${source.url}\n${(source.snippet || '').slice(0, 500)}`),
+      '',
+      'اكتب الآن إجابة شاملة ومنظمة، مدعومة بالأدلة، مع الإشارة إلى المصادر بأرقامها مثل [1] [2].',
+      'لا تختلق أي معلومة أو رابط غير موجود في المصادر أعلاه.',
+    ].join('\n')
+
+    const synthesis = await callExternalProviders({ message: synthesisMessage, history, mode: 'create', file: context.file, files: context.files, instructions })
+    if (!synthesis?.text) return null
+
+    thinking.push(`✅ تمت الإجابة من ${searchResult.sources.length} مصدر خلال ${searchResult.iterations.length} دورة بحث.`)
+    return {
+      ...synthesis,
+      thinking: toThinkingSteps(thinking),
+      deepResearch: true,
+      sources: searchResult.sources,
+      iterations: searchResult.iterations,
+    }
+  } catch (error) {
+    console.error('Deep research error:', error)
+    return null
+  }
+}
+
 export async function callProvider(id, context) {
   const runtime = findRuntimeProvider(id)
   if (id === 'gemini') return await callGemini(context)
@@ -662,6 +738,47 @@ function parallelResult(ids, context) {
   return Promise.any(attempts)
 }
 
+function withDeadline(promise, timeoutMs, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label}: تجاوز مهلة الرد (${Math.round(timeoutMs / 1000)}ث)`)), timeoutMs)
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      (error) => { clearTimeout(timer); reject(error) },
+    )
+  })
+}
+
+// Hedged failover: start the top provider immediately, and start the next one
+// after a short delay even if the first has not failed yet. The first success
+// wins, so a slow/rate-limited provider no longer stalls the whole request while
+// quality stays anchored to the priority order.
+function hedgeResult(ids, context, hedgeDelayMs, perProviderTimeout) {
+  return new Promise((resolve) => {
+    const failures = []
+    const started = new Set()
+    let pending = 0
+    let done = false
+    const startIndex = (index) => {
+      if (done || index >= ids.length || started.has(index)) return
+      started.add(index)
+      const id = ids[index]
+      pending += 1
+      withDeadline(callProvider(id, context), perProviderTimeout, id)
+        .then((value) => { if (!done) { done = true; resolve(value) } })
+        .catch((error) => { pruneBrokenRuntimeProvider(id, error); failures.push(`${id}: ${error.message}`) })
+        .finally(() => {
+          pending -= 1
+          if (!done) {
+            if (index + 1 < ids.length) startIndex(index + 1)
+            else if (pending === 0) resolve({ result: null, failures, orchestration: 'hedged-failover', attemptedProviders: ids })
+          }
+        })
+      if (index + 1 < ids.length) setTimeout(() => startIndex(index + 1), hedgeDelayMs)
+    }
+    startIndex(0)
+  })
+}
+
 export async function callExternalProviders(context) {
   let ids = orderedConfiguredProviders(context.file, context.mode, context.providerOverride)
   if (!ids.length) return { result: null, failures: [] }
@@ -679,17 +796,12 @@ export async function callExternalProviders(context) {
     }
   }
 
-  if (process.env.NADOS_PROVIDER_MODE === 'sequential') {
-    const failures = []
-    for (const id of ids) {
-      try {
-        return await callProvider(id, context)
-      } catch (error) {
-        pruneBrokenRuntimeProvider(id, error)
-        failures.push(`${id}: ${error.message}`)
-      }
-    }
-    return { result: null, failures }
+  if (process.env.NADOS_PROVIDER_MODE === 'sequential' && !SEARCH_MODES.has(context.mode)) {
+    // Quality-first with fast failover: hedge to the next provider after a short
+    // delay so one slow/429 provider cannot add tens of seconds of waiting.
+    const perProviderTimeout = Number(process.env.NADOS_SEQUENTIAL_TIMEOUT_MS) || 20_000
+    const hedgeDelay = Number(process.env.NADOS_HEDGE_DELAY_MS) || 4_000
+    return hedgeResult(ids, context, hedgeDelay, perProviderTimeout)
   }
 
   try {
@@ -868,11 +980,14 @@ export function getProviderCapabilities() {
     connected: connected,
     count: connected.length,
     features: {
+      chat: connected.length > 0,
       webSearch: connectedIds.has('gemini') || connectedIds.has('groq') || connectedIds.has('openai'),
-      vision: connectedIds.has('gemini') || connectedIds.has('openai') || (connectedIds.has('nvidia') && Boolean(process.env.NVIDIA_VISION_MODEL)),
-      images: Boolean(process.env.OPENAI_API_KEY) || hasProviderApiKey('gemini') || hasProviderApiKey('huggingface'),
+      files: connectedIds.has('gemini') || connectedIds.has('openai'),
+      vision: connectedIds.has('gemini') || connectedIds.has('openai') || (connectedIds.has('openrouter') && Boolean(process.env.OPENROUTER_VISION_MODEL)) || (connectedIds.has('nvidia') && Boolean(process.env.NVIDIA_VISION_MODEL)),
+      video: connectedIds.has('gemini'),
       transcription: Boolean(process.env.OPENAI_API_KEY) || hasProviderApiKey('groq'),
       speech: Boolean(process.env.OPENAI_API_KEY) || hasProviderApiKey('gemini'),
+      computer: process.platform === 'win32' && hasProviderApiKey('gemini'),
     },
   }
 }

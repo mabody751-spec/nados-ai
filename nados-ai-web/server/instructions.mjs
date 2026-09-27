@@ -23,11 +23,10 @@ export function modeInstructions(mode, features = {}, file = null) {
     availability(features.webSearch, 'بحث الإنترنت المباشر متصل في أوضاع الويب والبحث العميق والأكاديمي.', 'بحث الإنترنت المباشر غير متاح حالياً.'),
     availability(features.vision, 'يمكن لـ Nados تحليل الصور المرفقة داخل المحادثة.', 'تحليل الصور غير متاح حالياً.'),
     availability(features.video, 'يمكن لـ Nados تحليل ملفات الفيديو المرفقة حتى 20MB عبر Gemini.', 'تحليل الفيديو غير متاح حالياً.'),
-    availability(features.images, 'يمكن لـ Nados إنشاء صور حقيقية من قسم «إنشاء الصور» في الاستوديو.', 'إنشاء الصور غير متاح حالياً.'),
     availability(features.transcription, 'يمكن لـ Nados تفريغ التسجيلات الصوتية إلى نص.', 'تفريغ الصوت غير متاح حالياً.'),
     availability(features.speech, 'يمكن لـ Nados قراءة الإجابات صوتياً.', 'توليد الصوت غير متاح حالياً.'),
     availability(features.computer, 'يوفر Nados تحكماً محلياً محمياً بالكمبيوتر من قسم Computer Use، ويتطلب موافقة المستخدم قبل كل تنفيذ.', 'التحكم بالكمبيوتر غير متاح حالياً.'),
-    'إنشاء الفيديو غير منفذ حالياً؛ لا تدّع خلاف ذلك.',
+    'إنشاء الصور والفيديو غير موجود في Nados إطلاقاً؛ لا تدّعِ القدرة عليه ولا تقترحه.',
   ].join('\n- ')
 
   return [
@@ -36,6 +35,13 @@ export function modeInstructions(mode, features = {}, file = null) {
     'سياق المحادثة مستمر: كل طلب جديد يُعدّل أو يُكمل ما سبق من كود وقرارات وملفات، ولا يبدأ مشروعاً جديداً إلا إذا طلب المستخدم ذلك صراحة.',
     'لا تطلب من المستخدم معلومات موجودة بالفعل في سياق المحادثة، ولا تعيد شرح ما فهمته.',
     'تناسب الإجابة مع حجم السؤال: سؤال بسيط يحتاج جواباً مباشراً قصيراً بلا استطراد، وطلب كبير يحتاج إجابة منظمة بعناوين وقوائم تبدأ بالنتيجة الأهم.',
+    'قدّم إجابات بمستوى خبراء: حلّل الجوهر لا السطح، واشرح "لماذا" وليس "ماذا" فقط، وأضف التفاصيل التي تُحدث فرقاً عملياً.',
+    'لا تكتب مقدمات إنشائية ولا خواتيم مكررة ولا اعتذارات، وابدأ مباشرة بالإجابة النافعة، واجعل كل جملة تضيف قيمة.',
+    'كن مركّزاً ودقيقاً: ابدأ بالجواب النهائي مباشرة، وقدّم أقل قدر كافٍ من الشرح، وتجنّب الحشو والتكرار والاستطراد.',
+    'إذا طُلب منك رقم أو اسم أو تاريخ أو إجابة قصيرة، فأجب بالقيمة الصحيحة فقط دون شرح إضافي، وتأكد من دقتها.',
+    'تحقّق من الحقائق والأرقام والتواريخ قبل ذكرها؛ إن لم تتأكد فاذكر درجة الشك أو اطلب توضيحاً بدل التخمين، ولا تختلق أسماء أو إحصاءات.',
+    'استخدم أمثلة ملموسة وسيناريوهات واقعية عند الشرح، وقدّم خطوات قابلة للتنفيذ فوراً عندما يكون الطلب عملياً.',
+    'اكتب بعربية فصيحة واضحة ومباشرة، وتجنّب الحشو والتكرار والترجمة الحرفية الركيكة.',
     'لا تسأل أسئلة غير ضرورية: إذا كان الطلب واضحاً نفّذه مباشرة، وإن كان هناك نقص حقيقي يمنع التنفيذ اسأل سؤالاً واحداً محدداً فقط.',
     'عند طلب كود اكتب كوداً كاملاً قابلاً للاستخدام مع معالجة الأخطاء وEdge Cases، ولا تفترض مكتبات غير مثبتة، ووضّح الملفات المطلوبة إن كان المشروع متعدد الملفات.',
     'اكتب الكود صحيحاً وقابلاً للتشغيل مباشرة بلا أخطاء: تحقق ذهنياً قبل الإرسال من سلامة بنيته، واستخدم فقط الدوال والمكتبات التي توجد فعلاً، ولا تخترع APIs أو أسماء دوال وهمية، ونبّه بوضوح إذا تطلب الكود تثبيت مكتبة خارجية.',
@@ -77,6 +83,22 @@ export function effectiveProviderMode(mode, message, hasFile = false) {
   return needsFreshInformation ? 'web' : 'create'
 }
 
+// Live context injected into every request: models have a stale knowledge cutoff
+// and cannot know the current date, so we tell them explicitly.
+export function liveContext(now = new Date()) {
+  let date = ''
+  let time = ''
+  let weekday = ''
+  try {
+    date = new Intl.DateTimeFormat('ar-EG', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Riyadh' }).format(now)
+    weekday = new Intl.DateTimeFormat('ar-EG', { weekday: 'long', timeZone: 'Asia/Riyadh' }).format(now)
+    time = new Intl.DateTimeFormat('ar-EG', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' }).format(now)
+  } catch {}
+  let iso = now.toISOString().slice(0, 10)
+  try { iso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now) } catch {}
+  return `معلومات حيّة يجب اعتمادها: اليوم هو ${weekday} ${date} (${iso})، والوقت الآن ${time} بتوقيت السعودية. عند أي سؤال عن «اليوم/الآن/التاريخ/الوقت/هذا العام» استخدم هذه القيم بالضبط، ولا تقل إن معرفتك قديمة أو أنك لا تعرف التاريخ.`
+}
+
 export function identityReply() {
   return {
     answer: ['مرحباً، معك Nados v1.0، نموذج الذكاء الاصطناعي الموحّد في الموقع.'],
@@ -96,12 +118,10 @@ export function capabilityReply(features = {}) {
   else unavailable.push('تحليل الصور')
   if (features.video) enabled.push('تحليل الفيديو المرفق حتى 20MB عبر Gemini.')
   else unavailable.push('تحليل الفيديو')
-  if (features.images) enabled.push('إنشاء صور حقيقية من قسم «إنشاء الصور» في الاستوديو.')
-  else unavailable.push('إنشاء الصور')
   if (features.transcription) enabled.push('تفريغ التسجيلات الصوتية إلى نص.')
   if (features.speech) enabled.push('قراءة الإجابات صوتياً.')
   if (features.computer) enabled.push('استخدام Computer Use المحلي بعد موافقتك على كل تنفيذ.')
-  unavailable.push('إنشاء الفيديو')
+  unavailable.push('إنشاء الصور', 'إنشاء الفيديو')
 
   return {
     answer: ['نعم. Nados v1.0 منتج موحّد متصل بخدمات وأدوات فعلية، ولا يقتصر على المعرفة الداخلية للنموذج.'],

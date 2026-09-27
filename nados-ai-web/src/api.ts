@@ -39,11 +39,29 @@ export interface ChatReply {
   bullets: string[]
   sources: Source[]
   responseId?: string
+  variant?: 'v1.1' | 'v1.0'
   provider?: string
   model?: string
   demo?: boolean
   stopped?: boolean
   usage?: ReplyUsage
+  thinking?: ThinkingStep[]
+  deepResearch?: boolean
+  iterations?: DeepResearchIteration[]
+}
+
+export interface ThinkingStep {
+  type: string
+  label: string
+  content: string
+  duration?: number
+  metadata?: Record<string, unknown>
+}
+
+export interface DeepResearchIteration {
+  iteration: number
+  query: string
+  sourcesCount: number
 }
 
 export interface ConversationMessage {
@@ -64,7 +82,6 @@ export interface ApiCapabilities {
     files: boolean
     vision: boolean
     video: boolean
-    images: boolean
     transcription: boolean
     speech: boolean
     computer: boolean
@@ -153,18 +170,45 @@ export interface TrainingTeacher {
   capabilities: { contextWindow: number; maxOutput: number; longContext: boolean; reasoning: boolean; coding: boolean; vision: boolean; metered: boolean }
 }
 
+export interface TrainingGrowth {
+  baseParams: number
+  trainableParams: number
+  currentParams: number
+  targetParams: number
+  percent: number
+  milestoneId: string
+  milestoneName: string
+  nextMilestone: { id: string; name: string; params: number; acceptedNeeded: number; cyclesToNext: number | null } | null
+  cycles: number
+  accepted: number
+  examples: number
+  bestQuality: number
+  growthPerExample: number
+  startedAt: string
+  updatedAt: string | null
+  history: Array<{ at: string; cycles: number; accepted: number; params: number }>
+  roadmap: Array<{ id: string; name: string; params: number; minAccepted: number }>
+}
+
 export interface TrainingCenterData {
   providers: TrainingTeacher[]
   trainingProvider: string
+  providerState?: string
   supabase: { enabled: boolean; outputsTotal?: number; outputsAccepted?: number; examplesTotal?: number }
   scheduler: { enabled: boolean; intervalMs: number; lastRunAt: string | null; runs: number }
+  targetParams?: number
+  growth?: TrainingGrowth
+  continuity?: { twentyFourSeven: boolean; note: string }
   usage: Record<string, { totalCalls: number; successCalls: number; failedCalls: number; errorRate: number; avgLatencyMs: number }> | null
   kaggle?: {
     state: string
+    providerState?: string
     model?: { version: string; base: string; state: string; done: boolean }
     params?: { trainable: number | null; total: number | null; percent: number | null }
     progress?: { stepsDone: number | null; stepsTotal: number; gpu: string | null }
     dataset?: { examples: number; outputs: number; accepted: number }
+    targetParams?: number
+    growth?: TrainingGrowth
   }
 }
 
@@ -177,13 +221,17 @@ export async function getTrainingCenter(includeKaggle = false): Promise<Training
     ])
     if (!registryRes.ok || !statsRes.ok) return null
     const registry = await registryRes.json() as { providers: TrainingTeacher[]; trainingProvider: string }
-    const stats = await statsRes.json() as { supabase: TrainingCenterData['supabase']; scheduler: TrainingCenterData['scheduler'] }
+    const stats = await statsRes.json() as { supabase: TrainingCenterData['supabase']; scheduler: TrainingCenterData['scheduler']; targetParams?: number; continuity?: TrainingCenterData['continuity']; providerState?: string; progress?: TrainingGrowth }
     const usage = usageRes.ok ? ((await usageRes.json() as { stats?: TrainingCenterData['usage'] }).stats || null) : null
     const base: TrainingCenterData = {
       providers: registry.providers || [],
       trainingProvider: registry.trainingProvider,
+      providerState: stats.providerState,
       supabase: stats.supabase || { enabled: false },
       scheduler: stats.scheduler || { enabled: false, intervalMs: 0, lastRunAt: null, runs: 0 },
+      targetParams: stats.targetParams,
+      growth: stats.progress,
+      continuity: stats.continuity,
       usage,
     }
     if (!includeKaggle) return base
@@ -207,7 +255,6 @@ const emptyFeatures = {
   files: false,
   vision: false,
   video: false,
-  images: false,
   transcription: false,
   speech: false,
   computer: false,
@@ -303,12 +350,14 @@ export async function askNados(
   history: ConversationMessage[] = [],
   signal?: AbortSignal,
   onMeta?: (provider: string, modelLabel: string) => void,
-  options?: { enableThinking?: boolean; systemPrompt?: string; temperature?: number },
+  onThinking?: (thinking: ThinkingStep[]) => void,
+  options?: { enableThinking?: boolean; systemPrompt?: string; temperature?: number; variant?: 'v1.1' | 'v1.0' },
 ): Promise<ChatReply> {
   const form = new FormData()
   form.set('message', question)
   form.set('mode', mode)
   form.set('model', model)
+  form.set('variant', options?.variant === 'v1.0' ? 'v1.0' : 'v1.1')
   if (options?.enableThinking) form.set('thinking', 'true')
   if (options?.systemPrompt?.trim()) form.set('system_prompt', options.systemPrompt.trim().slice(0, 2000))
   if (typeof options?.temperature === 'number') form.set('temperature', String(options.temperature))
@@ -317,32 +366,36 @@ export async function askNados(
   for (const file of fileList) form.append('files', file, file.name)
 
   let streamedText = ''
-  let finalReply: ChatReply | null = null
+let finalReply: ChatReply | null = null
+    let thinkingBuffer: ThinkingStep[] = []
 
-  try {
-    const response = await fetch('/api/chat/stream', { method: 'POST', body: form, signal })
-    if (!response.ok || !response.body) throw new Error(await readError(response, `HTTP ${response.status}`))
+    try {
+      const response = await fetch('/api/chat/stream', { method: 'POST', body: form, signal })
+      if (!response.ok || !response.body) throw new Error(await readError(response, `HTTP ${response.status}`))
 
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
 
-    const handleEvent = (raw: string) => {
-      const data = raw.split('\n').find((line) => line.startsWith('data: '))?.slice(6)
-      if (!data) return
-      const event = JSON.parse(data) as { type: string; delta?: string; reply?: ChatReply; message?: string; provider?: string; model?: string }
-      if (event.type === 'delta' && event.delta) {
-        streamedText += event.delta
-        onDelta?.(streamedText)
-      } else if (event.type === 'done' && event.reply) {
-        finalReply = event.reply
-        onMeta?.(finalReply.provider || '', finalReply.model || model)
-      } else if (event.type === 'meta' && (event.provider || event.model)) {
-        onMeta?.(event.provider || '', event.model || model)
-      } else if (event.type === 'error') {
-        throw new Error(event.message || 'تعذّر إكمال الإجابة.')
+      const handleEvent = (raw: string) => {
+        const data = raw.split('\n').find((line) => line.startsWith('data: '))?.slice(6)
+        if (!data) return
+        const event = JSON.parse(data) as { type: string; delta?: string; reply?: ChatReply; message?: string; provider?: string; model?: string; thinking?: ThinkingStep[] }
+        if (event.type === 'delta' && event.delta) {
+          streamedText += event.delta
+          onDelta?.(streamedText)
+        } else if (event.type === 'done' && event.reply) {
+          finalReply = event.reply
+          onMeta?.(finalReply.provider || '', finalReply.model || model)
+        } else if (event.type === 'meta' && (event.provider || event.model)) {
+          onMeta?.(event.provider || '', event.model || model)
+        } else if (event.type === 'thinking' && event.thinking) {
+          thinkingBuffer.push(...event.thinking)
+          onThinking?.(thinkingBuffer)
+        } else if (event.type === 'error') {
+          throw new Error(event.message || 'تعذّر إكمال الإجابة.')
+        }
       }
-    }
 
     while (true) {
       const { value, done } = await reader.read()
@@ -369,20 +422,6 @@ export async function askNados(
     const reply = fallbackReply(question, mode, capabilities.ok && capabilities.configured)
     onDelta?.(reply.answer.join('\n\n'))
     return reply
-  }
-}
-
-export async function generateNadosImage(prompt: string, style: string, ratio: 'square' | 'landscape' | 'portrait') {
-  try {
-    const response = await fetch('/api/images', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, style, ratio }),
-    })
-    if (!response.ok) throw new Error(await readError(response, 'تعذّر إنشاء الصورة.'))
-    return await response.json() as { dataUrl: string | null; demo: boolean }
-  } catch {
-    return { dataUrl: null, demo: true }
   }
 }
 

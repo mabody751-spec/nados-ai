@@ -65,3 +65,26 @@ npm start         # خدمة API وملفات dist المبنية
 - لا يرسل الخادم نص المحادثة إلى سجل المتصفح، ويستخدم `store: false` في Responses API.
 
 التنفيذ مبني على توثيق OpenAI الرسمي لـ [Responses API](https://developers.openai.com/api/docs/guides/migrate-to-responses)، و[بحث الويب](https://developers.openai.com/api/docs/guides/tools-web-search)، و[إدخال الملفات](https://developers.openai.com/api/docs/guides/file-inputs)، و[الصوت](https://developers.openai.com/api/docs/guides/audio)، و[توليد الصور](https://developers.openai.com/api/docs/guides/image-generation).
+
+## وضع العمل (تنفيذ حقيقي)
+
+وضع «العمل» ينفّذ actions فعلية على القرص والعمليات، ولا يدّعي نجاحاً بلا نتيجة أداة أو تحقق.
+
+- كل مشروع له مساحة عمل معزولة: `NADOS_WORKSPACES_ROOT/<projectId>` (افتراضياً `<cwd>/workspaces`، ويُسترجع السجل من القرص عند إعادة التشغيل).
+- أدوات حقيقية: قراءة/كتابة/تعديل/حذف/نقل/نسخ الملفات، إنشاء مجلدات، بحث، شجرة، وتنفيذ أوامر (`npm install|run build|test`، `node`، `git` للقراءة فقط).
+- محرّك تحقق حقيقي: وجود ملف الدخول، `npm run build`، `npm test`، واستجابة المعاينة (2xx/3xx فقط).
+- معاينة من **أصل محلي منفصل** (منفذ عشوائي على 127.0.0.1) لعزل أي سكربت في المشروع عن أصل التطبيق، مع وسيط HTTP وإعادة كتابة مسارات Vite، وتقديم ثابت للمشاريع الثابتة.
+- تصدير ZIP حقيقي (بدون `node_modules` و`.git` ومجلدات البناء) مع التحقق من عدد العناصر قبل التنزيل.
+- تحكم فعلي: إيقاف فوري يُلغي المهمة، وإيقاف مؤقت يوقف الحلقة ويُبلَّغ `paused`، ولا يُشغَّل بناء/تحقق بعد الإيقاف.
+- حماية: منع المسارات المطلقة والصعود `..`، حجب `powershell/curl/...` و`node -e` وسكربتات الصدفة، وبيئة عمليات **بقائمة سماح** (لا أسرار)، وredaction للمخرجات، وحدود للملفات/الحجم/المخرجات/المهلات، وتقييد المعدّل، وفحص ملكية المشروع على كل مسار.
+
+### الأمان والنطاق
+- مسارات التنفيذ والتعديل (`/command`, `/start`, `/agent`, كتابة الملفات، الحذف) محصورة بالطلبات المحلية (`requireLocalOrigin`) مثل بقية أدوات الإدارة، لأن التطبيق لا يملك طبقة مصادقة بعد.
+- كل مسارات `/api/work/projects/:id/**` تفحص ملكية المشروع وتعيد 404 للمشاريع غير التابعة (بلا كشف وجودها).
+- نقطة النهاية `/api/work/status` تُرجع `executionAvailable` و`previewOrigin`، والواجهة تعرض «بيئة التنفيذ غير متاحة» بدل التظاهر.
+
+نقاط النهاية تحت `/api/work/*`: إنشاء/سرد/حذف المشاريع، الشجرة، الملفات (قراءة/كتابة/إجراءات)، الفروقات، البحث، تنفيذ الأوامر، تشغيل/إيقاف الخادم، التحقق، وكيل SSE، والمعاينة عبر `previewOrigin`، وZIP.
+
+المتغيرات: `NADOS_WORKSPACES_ROOT`, `NADOS_WORK_MAX_STEPS`, `NADOS_WORK_MAX_RETRIES`, `NADOS_WORK_COMMAND_TIME_MS`, `NADOS_WORK_INSTALL_TIME_MS`, `NADOS_WORK_SERVER_BOOT_MS`, `NADOS_WORK_MAX_FILE_BYTES`, `NADOS_WORK_MAX_PROJECT_BYTES`, `NADOS_WORK_MAX_FILES`, `NADOS_WORK_RATE_LIMIT`, `NADOS_PROVIDER_ORDER`.
+
+لتفعيل حفظ المشاريع بين الجلسات، شغّل `supabase-work-schema.sql` في Supabase واضبط `SUPABASE_URL` و`SUPABASE_SERVICE_ROLE_KEY` (مفتاح الخدمة مطلوب لأن الجدول محمي بـ RLS). في نشر Cloudflare Containers، يُستبدل محرّك التنفيذ المحلي بـ Cloudflare Sandbox عبر نفس الواجهة.

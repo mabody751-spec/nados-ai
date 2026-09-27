@@ -64,6 +64,8 @@ interface ComposerProps {
   acceptFile?: (file: File) => void
   enableSearch?: boolean
   enableThinking?: boolean
+  variant?: 'v1.1' | 'v1.0'
+  setVariant?: (value: 'v1.1' | 'v1.0') => void
   setEnableSearch?: (value: boolean) => void
   setEnableThinking?: (value: boolean) => void
 }
@@ -133,6 +135,7 @@ export function Composer(props: ComposerProps) {
       <textarea
         ref={props.textarea}
         value={props.query}
+        dir="auto"
         onChange={(event) => props.setQuery(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) {
@@ -148,7 +151,7 @@ export function Composer(props: ComposerProps) {
             else props.setSelectedFiles((current) => current.length >= 5 ? current : [...current, image])
           }
         }}
-        rows={2}
+        rows={1}
         maxLength={MAX_MESSAGE_CHARS}
         placeholder={props.compact ? 'اسأل سؤالاً آخر...' : 'اسأل Nados أي شيء...'}
         aria-label="اكتب سؤالك"
@@ -202,6 +205,10 @@ export function Composer(props: ComposerProps) {
             }
             event.target.value = ''
           }} />
+          <div className="model-variant" role="group" aria-label="إصدار نموذج Nados">
+            <button type="button" className={props.variant !== 'v1.0' ? 'active' : ''} onClick={() => props.setVariant?.('v1.1')} aria-pressed={props.variant !== 'v1.0'} title="Nados v1.1 — النموذج الأساسي"><span className="mv-name">Nados</span> <b>1.1</b></button>
+            <button type="button" className={props.variant === 'v1.0' ? 'active' : ''} onClick={() => props.setVariant?.('v1.0')} aria-pressed={props.variant === 'v1.0'} title="Nados v1.0"><span className="mv-name">Nados</span> <b>1.0</b></button>
+          </div>
           <div className="composer-toggles">
             <button
               className={`composer-toggle ${props.enableSearch ? 'active' : ''}`}
@@ -214,60 +221,9 @@ export function Composer(props: ComposerProps) {
               className={`composer-toggle ${props.enableThinking ? 'active' : ''}`}
               onClick={() => props.setEnableThinking?.(!props.enableThinking)}
               aria-pressed={props.enableThinking}
-              aria-label="تفعيل التفكير"
-              title="تفكير عميق خطوة بخطوة"
+              aria-label="تفعيل التفكير العميق"
+              title="تفكير عميق: بحث عميق + أكاديمي + إنشاء"
             ><BrainCircuit size={15} /><span>تفكير</span></button>
-          </div>
-          <div className="mode-select">
-            <button onClick={() => { props.setModeOpen(!props.modeOpen); props.setModelOpen(false) }}><Icon size={15} /><span className="control-label">{modeData[props.mode].label}</span><ChevronDown size={13} /></button>
-            {props.modeOpen && (
-              <div className="mode-menu mode-menu--wide">
-                {(Object.entries(modeData) as Array<[SearchMode, (typeof modeData)[SearchMode]]>).map(([key, item]) => (
-                  <button key={key} className={props.mode === key ? 'selected' : ''} onClick={() => { props.setMode(key); props.setModeOpen(false) }}>
-                    <item.Icon size={17} /><span><strong>{item.label}</strong><small>{item.description}</small></span>{props.mode === key && <Check size={15} />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="model-select">
-            <button className="unified-model" type="button" aria-label="اختيار نموذج Nados" aria-expanded={props.modelOpen} title={selectedModel.label} onClick={() => { props.setModelOpen(!props.modelOpen); props.setModeOpen(false) }}>
-              <SelectedModelIcon size={15} /><span className="control-label">{selectedModel.label}</span><ChevronDown size={12} />
-            </button>
-            {props.modelOpen && (
-              <div className="model-menu" role="listbox" aria-label="نماذج Nados المتاحة">
-                <div className="model-menu-heading"><strong>نماذج Nados</strong><small>{props.models.length} نموذج متاح</small></div>
-                {Object.entries(props.models.reduce<Record<string, typeof props.models[number][]>>((groups, item) => {
-                  const key = item.provider || 'أخرى'
-                  groups[key] = groups[key] || []
-                  groups[key].push(item)
-                  return groups
-                }, {}))
-                  .sort(([leftProvider], [rightProvider]) => Number(rightProvider === 'Nados') - Number(leftProvider === 'Nados') || leftProvider.localeCompare(rightProvider, 'ar'))
-                  .map(([provider, items]) => (
-
-                    <div className={`model-menu-section ${provider === 'Nados' ? 'nados-section' : ''}`} key={provider}>
-                      <div className="model-menu-section-header">
-                        <strong>{provider === 'Nados' ? 'Nados — نموذجنا المدرَّب' : provider}</strong>
-                        <small>{items.length} نموذج</small>
-                      </div>
-                      {items
-                        .slice()
-                        .sort((left, right) => left.label.localeCompare(right.label, 'en'))
-                        .map((item) => {
-                          const ModelIcon = getModelIcon(item.providerId)
-                          return (
-                            <button key={item.id} type="button" role="option" aria-selected={props.model === item.id} className={props.model === item.id ? 'selected' : ''} onClick={() => { props.setModel(item.id); props.setModelOpen(false) }}>
-                              <span className="model-option-icon"><ModelIcon size={10} /></span>
-                              <span><strong dir="auto">{item.label}</strong><small>{item.webSearch ? 'ويب' : ''}{item.vision ? item.webSearch ? ' · رؤية' : 'رؤية' : ''}{item.files ? (item.webSearch || item.vision ? ' · ملفات' : 'ملفات') : ''}{item.contextWindow ? ` · سياق ${formatTokens(item.contextWindow)}` : ''}</small></span>
-                              {props.model === item.id && <Check size={14} />}
-                            </button>
-                          )
-                        })}
-                    </div>
-                  ))}
-              </div>
-            )}
           </div>
         </div>
         <div className="tools-group">
@@ -277,6 +233,7 @@ export function Composer(props: ComposerProps) {
             : <button className="send-button" onClick={props.onSubmit} disabled={!props.query.trim()} aria-label="إرسال" title="إرسال"><ArrowLeft size={20} /></button>}
         </div>
       </div>
+      <div className="composer-hint" aria-hidden="true"><kbd>Enter</kbd> للإرسال · <kbd>Shift</kbd>+<kbd>Enter</kbd> لسطر جديد</div>
     </div>
   )
 }

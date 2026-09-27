@@ -1,6 +1,6 @@
 import type { ModelId, SearchMode } from './api'
 
-export type View = 'home' | 'chat' | 'discover' | 'library' | 'spaces' | 'studio' | 'computer' | 'connectors' | 'training' | 'agents' | 'work'
+export type View = 'home' | 'chat' | 'discover' | 'library' | 'spaces' | 'connectors' | 'training' | 'agents' | 'work'
 
 export interface HistoryItem {
   id: string
@@ -19,6 +19,7 @@ export interface Space {
   files: number
   threads: number
   visibility: 'private' | 'shared'
+  instructions?: string
 }
 
 export interface AppSettings {
@@ -29,6 +30,10 @@ export interface AppSettings {
   language: 'ar' | 'en'
   systemPrompt?: string
   temperature?: number
+  fontSize?: 'sm' | 'md' | 'lg'
+  notifications?: boolean
+  voiceReplies?: boolean
+  defaultThinking?: boolean
 }
 
 export const initialHistory: HistoryItem[] = [

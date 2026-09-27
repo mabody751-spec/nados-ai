@@ -42,9 +42,10 @@ import {
   Zap,
   X,
 } from 'lucide-react'
-import { askNados, formatTokens, getNadosCapabilities, getNadosModels, synthesizeNadosSpeech, type ApiCapabilities, type ChatReply, type ConversationMessage, type ModelId, type NadosModelOption, type SearchMode } from './api'
+import { askNados, formatTokens, getNadosCapabilities, getNadosModels, synthesizeNadosSpeech, type 
+ApiCapabilities, type ChatReply, type ConversationMessage, type ModelId, type NadosModelOption, type SearchMode, type ThinkingStep } from './api'
 import { Composer, modeData } from './Composer'
-import { ComputerView, ConnectorsView, DiscoverView, LibraryView, SettingsPanel, SpacesView, StudioView, VoiceDialog } from './FeatureViews'
+import { ConnectorsView, DiscoverView, LibraryView, SettingsPanel, SpacesView, VoiceDialog } from './FeatureViews'
 import { TrainingCenter } from './TrainingCenter'
 import { AgentManager } from './AgentManager'
 import { initialHistory, initialSpaces, type AppSettings, type HistoryItem, type Space, type View } from './types'
@@ -154,6 +155,9 @@ function AppV2() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mode, setMode] = useState<SearchMode>('web')
   const [model, setModel] = useState<ModelId>('nados-v1')
+  const [modelVariant, setModelVariant] = useState<'v1.1' | 'v1.0'>(() => {
+    try { return localStorage.getItem('nados-variant') === 'v1.0' ? 'v1.0' : 'v1.1' } catch { return 'v1.1' }
+  })
   const [models, setModels] = useState<NadosModelOption[]>([automaticModel])
   const [modeOpen, setModeOpen] = useState(false)
   const [modelOpen, setModelOpen] = useState(false)
@@ -164,7 +168,7 @@ function AppV2() {
     provider: 'offline',
     providers: [],
     model: 'Nados v1.0',
-    features: { chat: false, webSearch: false, files: false, vision: false, video: false, images: false, transcription: false, speech: false, computer: false },
+    features: { chat: false, webSearch: false, files: false, vision: false, video: false, transcription: false, speech: false, computer: false },
   })
   const [toast, setToast] = useState('')
   const [listening, setListening] = useState(false)
@@ -174,11 +178,12 @@ function AppV2() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [reasoningOpen, setReasoningOpen] = useState(true)
+  const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([])
   const [sessionSearch, setSessionSearch] = useState('')
   const [chatSearchOpen, setChatSearchOpen] = useState(false)
   const [chatQuery, setChatQuery] = useState('')
   const [moreMenuFor, setMoreMenuFor] = useState<string | null>(null)
-  const [enableSearch, setEnableSearch] = useState(false)
+  const [enableSearch, setEnableSearch] = useState(true)
   const [enableThinking, setEnableThinking] = useState(false)
   const [streamMeta, setStreamMeta] = useState<{ provider: string; model: string } | null>(null)
   const [history, setHistory] = useState<HistoryItem[]>(() => loadLocal('nados-history', initialHistory))
@@ -219,8 +224,14 @@ function AppV2() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.dark ? 'dark' : 'light'
+    document.documentElement.dataset.font = settings.fontSize || 'md'
     localStorage.setItem('nados-settings', JSON.stringify({ ...settings, dark: settings.dark }))
   }, [settings])
+  useEffect(() => {
+    if (settings.defaultThinking) setEnableThinking(true)
+  }, [settings.defaultThinking])
+
+  useEffect(() => { try { localStorage.setItem('nados-variant', modelVariant) } catch {} }, [modelVariant])
   useEffect(() => localStorage.setItem('nados-history', JSON.stringify(history)), [history])
   useEffect(() => localStorage.setItem('nados-spaces', JSON.stringify(spaces)), [spaces])
   useEffect(() => {
@@ -311,34 +322,40 @@ function AppV2() {
       return
     }
 
+    const scroller = document.querySelector<HTMLElement>('.main-content')
     const updateScrollState = () => {
-      const distanceFromBottom = document.documentElement.scrollHeight - window.innerHeight - window.scrollY
-      setShowScrollButton(distanceFromBottom > 180)
+      const el = scroller || document.documentElement
+      setShowScrollButton(el.scrollHeight - el.clientHeight - el.scrollTop > 180)
     }
 
     updateScrollState()
-    window.addEventListener('scroll', updateScrollState, { passive: true })
+    const target: EventTarget = scroller || window
+    target.addEventListener('scroll', updateScrollState, { passive: true })
     window.addEventListener('resize', updateScrollState)
 
     return () => {
-      window.removeEventListener('scroll', updateScrollState)
+      target.removeEventListener('scroll', updateScrollState)
       window.removeEventListener('resize', updateScrollState)
     }
   }, [view, messages.length, loading])
 
   const isNearBottom = useRef(true)
   useEffect(() => {
+    const scroller = document.querySelector<HTMLElement>('.main-content')
     const trackPosition = () => {
-      isNearBottom.current = document.documentElement.scrollHeight - window.innerHeight - window.scrollY < 240
+      const el = scroller || document.documentElement
+      isNearBottom.current = el.scrollHeight - el.clientHeight - el.scrollTop < 240
     }
-    window.addEventListener('scroll', trackPosition, { passive: true })
-    return () => window.removeEventListener('scroll', trackPosition)
+    const target: EventTarget = scroller || window
+    target.addEventListener('scroll', trackPosition, { passive: true })
+    return () => target.removeEventListener('scroll', trackPosition)
   }, [])
 
   useEffect(() => {
     if (view !== 'chat' || !messages.length) return
     if (loading && !isNearBottom.current) return
-    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: loading ? 'auto' : 'smooth' })
+    const el = document.querySelector<HTMLElement>('.main-content') || document.documentElement
+    el.scrollTo({ top: el.scrollHeight, behavior: loading ? 'auto' : 'smooth' })
   }, [messages.length, loading, view, reply])
 
   const stopSpeechPlayback = () => {
@@ -489,12 +506,18 @@ function AppV2() {
     const now = new Date()
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
     const startOfYesterday = startOfToday - 86_400_000
+    const weekAgo = startOfToday - 6 * 86_400_000
+    const monthAgo = startOfToday - 29 * 86_400_000
     const groups: Array<{ label: string; items: ChatSession[] }> = []
     const add = (label: string, items: ChatSession[]) => { if (items.length) groups.push({ label, items }) }
-    add('مثبتة', list.filter((item) => item.pinned))
-    add('اليوم', list.filter((item) => !item.pinned && new Date(item.updatedAt).getTime() >= startOfToday))
-    add('أمس', list.filter((item) => !item.pinned && new Date(item.updatedAt).getTime() >= startOfYesterday && new Date(item.updatedAt).getTime() < startOfToday))
-    add('سابقاً', list.filter((item) => !item.pinned && new Date(item.updatedAt).getTime() < startOfYesterday))
+    const time = (item: ChatSession) => new Date(item.updatedAt).getTime()
+    const unpinned = list.filter((item) => !item.pinned).sort((a, b) => time(b) - time(a))
+    add('مثبتة', list.filter((item) => item.pinned).sort((a, b) => time(b) - time(a)))
+    add('اليوم', unpinned.filter((item) => time(item) >= startOfToday))
+    add('أمس', unpinned.filter((item) => time(item) >= startOfYesterday && time(item) < startOfToday))
+    add('آخر ٧ أيام', unpinned.filter((item) => time(item) >= weekAgo && time(item) < startOfYesterday))
+    add('آخر ٣٠ يوماً', unpinned.filter((item) => time(item) >= monthAgo && time(item) < weekAgo))
+    add('أقدم', unpinned.filter((item) => time(item) < monthAgo))
     return groups
   }
 
@@ -521,6 +544,7 @@ function AppV2() {
     setReply(null)
     setStreamMeta(null)
     setReasoningOpen(true)
+    setThinkingSteps([])
     const memoryHistory: ConversationMessage[] = settings.memory
       ? previousMessages.map((message) => ({ role: message.role, content: message.content }))
       : []
@@ -532,7 +556,10 @@ function AppV2() {
         setReply({ answer: [text], bullets: [], sources: [] })
       }, memoryHistory, controller.signal, (provider, modelLabel) => {
         setStreamMeta({ provider, model: modelLabel })
-      }, { enableThinking, systemPrompt: settings.systemPrompt, temperature: settings.temperature ?? 0.7 })
+      }, (thinking) => {
+        setThinkingSteps(thinking)
+        setReasoningOpen(true)
+      }, { enableThinking, systemPrompt: settings.systemPrompt, temperature: settings.temperature ?? 0.7, variant: modelVariant })
     } finally {
       abortControllerRef.current = null
     }
@@ -704,10 +731,10 @@ function AppV2() {
 
   const updateSettings = (next: Partial<AppSettings>) => setSettings((current) => ({ ...current, ...next }))
   const selectedModel = models.find((item) => item.id === model) || automaticModel
-  const composerProps = { query, setQuery, onSubmit: () => submit(), mode, setMode, model, models, setModel, modelOpen, setModelOpen, modeOpen, setModeOpen, fileInput, cameraInput, selectedFiles, setSelectedFiles, textarea, startVoice: startDictation, listening, loading, onStop: stopGeneration, enableSearch: enableSearch || mode === 'web', enableThinking, setEnableSearch: (value: boolean) => { setEnableSearch(value); setMode(value ? 'web' : 'create') }, setEnableThinking }
-  const viewTitles: Partial<Record<View, string>> = { chat: 'محادثة', discover: 'استكشف', library: 'المكتبة', spaces: 'المساحات', studio: 'إنشاء الصور', computer: 'التحكم بالكمبيوتر', connectors: 'التطبيقات المتصلة', training: 'مركز التدريب', agents: 'مركز الوكلاء', work: 'العمل' }
+  const composerProps = { query, setQuery, onSubmit: () => submit(), mode, setMode, model, models, setModel, modelOpen, setModelOpen, modeOpen, setModeOpen, fileInput, cameraInput, selectedFiles, setSelectedFiles, textarea, startVoice: startDictation, listening, loading, onStop: stopGeneration, enableSearch: enableSearch || mode === 'web', enableThinking, variant: modelVariant, setVariant: setModelVariant, setEnableSearch: (value: boolean) => { setEnableSearch(value); if (value) setMode('web'); else setMode(enableThinking ? 'research' : 'create') }, setEnableThinking: (value: boolean) => { setEnableThinking(value); setMode(value ? 'research' : 'web') } }
+const viewTitles: Partial<Record<View, string>> = { chat: 'محادثة', discover: 'استكشف', library: 'المكتبة', spaces: 'المساحات', connectors: 'التطبيقات المتصلة', training: 'مركز التدريب', agents: 'مركز الوكلاء', work: 'العمل' }
 
-  const workspaceMode = view === 'chat' || view === 'home' || view === 'discover' || view === 'library' || view === 'spaces' || view === 'studio' ? 'chat' : 'work'
+const workspaceMode = view === 'chat' || view === 'home' || view === 'discover' || view === 'library' || view === 'spaces' ? 'chat' : 'work'
 
   return (
     <div className="app-shell">
@@ -720,8 +747,6 @@ function AppV2() {
           <button className={view === 'discover' ? 'active' : ''} onClick={() => navigate('discover')}><Compass size={18} /><span>استكشف</span></button>
           <button className={view === 'library' ? 'active' : ''} onClick={() => navigate('library')}><Library size={18} /><span>المكتبة</span></button>
           <button className={view === 'spaces' ? 'active' : ''} onClick={() => navigate('spaces')}><Boxes size={18} /><span>المساحات</span></button>
-          <button className={view === 'studio' ? 'active' : ''} onClick={() => navigate('studio')}><ImageIcon size={18} /><span>إنشاء الصور</span></button>
-          <button className={view === 'computer' ? 'active' : ''} onClick={() => navigate('computer')}><MonitorCog size={18} /><span>الكمبيوتر</span></button>
           <button className={view === 'connectors' ? 'active' : ''} onClick={() => navigate('connectors')}><PlugZap size={18} /><span>التطبيقات المتصلة</span></button>
           {['localhost', '127.0.0.1', '::1'].includes(window.location.hostname) && <button className={view === 'training' ? 'active' : ''} onClick={() => navigate('training')}><BrainCircuit size={18} /><span>مركز التدريب</span></button>}
           {['localhost', '127.0.0.1', '::1'].includes(window.location.hostname) && <button className={view === 'agents' ? 'active' : ''} onClick={() => navigate('agents')}><Bot size={18} /><span>مركز الوكلاء</span></button>}
@@ -741,7 +766,6 @@ function AppV2() {
             </div>
           ))}</div></div>
         <div className="sidebar-footer">
-          <button className={`plan-row ${settings.incognito ? 'incognito' : capabilities.configured ? 'online' : 'offline'}`} onClick={() => updateSettings({ incognito: !settings.incognito })}>{settings.incognito ? <EyeOff size={17} /> : <span className="status-dot" />}<div><strong>{settings.incognito ? 'الوضع الخفي مفعل' : capabilities.configured ? 'Nados v1.0 متصل' : capabilities.provider === 'demo' ? 'Nados v1.0 تجريبي' : 'الخادم غير متصل'}</strong><small>{settings.incognito ? 'لن تحفظ المحادثات' : capabilities.configured ? 'نموذج Nados الموحد في خدمتك' : 'تأكد من اتصال خدمة Nados'}</small></div></button>
           <button className="profile-button" onClick={() => setSettingsOpen(true)}><CircleUserRound size={21} /><span>حسابي</span><ChevronDown size={15} /></button>
           <div className="sidebar-quick-actions">
             <button className="icon-button" onClick={() => setVoiceOpen(true)} aria-label="المحادثة الصوتية" title="المحادثة الصوتية"><Mic size={18} /></button>
@@ -757,7 +781,7 @@ function AppV2() {
           <button className="icon-button menu-button" onClick={() => setSidebarOpen(true)} aria-label="فتح القائمة" title="القائمة"><Menu size={21} /></button>
           <div className="workspace-toggle" role="tablist" aria-label="وضع المنصة">
             <button className={workspaceMode === 'chat' ? 'active' : ''} onClick={() => navigate(workspaceMode === 'chat' ? 'chat' : 'home')} role="tab" aria-selected={workspaceMode === 'chat'}>المحادثة</button>
-            <button className={workspaceMode === 'work' ? 'active' : ''} onClick={() => navigate('work')} role="tab" aria-selected={workspaceMode === 'work'}><Zap size={14} /> العمل</button>
+            <button type="button" className="workspace-toggle-work" onClick={() => setToast('وضع العمل يفتح قريباً — نعمل عليه حالياً.')} title="يفتح قريباً"><Zap size={14} /> العمل<span className="soon-tag">قريباً</span></button>
           </div>          <div className="topbar-title">{viewTitles[view] && <span>{viewTitles[view]}</span>}{settings.incognito && <span className="incognito-label"><EyeOff size={14} /> خفي</span>}</div>
           <div className="topbar-actions">
             {view === 'chat' && <button className="icon-button" onClick={shareConversation} aria-label="مشاركة" title="مشاركة"><Share2 size={18} /></button>}
@@ -775,7 +799,6 @@ function AppV2() {
                 <span className="hero-badge mint"><SearchCheck size={14} /> بحث عميق</span>
                 <span className="hero-badge blue"><ImageIcon size={14} /> صورة وصوت</span>
                 <span className="hero-badge coral"><Archive size={14} /> ملفات ومرفقات</span>
-                <span className="hero-badge amber"><MonitorCog size={14} /> تحكم بالكمبيوتر</span>
               </div>
             </div>
             <Composer {...composerProps} />
@@ -785,14 +808,6 @@ function AppV2() {
 
         {view === 'chat' && (
           <section className="chat-view">
-            <div className="chat-header">
-              <div className="chat-header-badge"><span className="chat-header-dot" /> محادثة حالية</div>
-              <div className="chat-header-meta">
-                <span className="meta-pill">{modeData[mode].label}</span>
-                <span className="meta-pill meta-pill--soft">{selectedModel.label}</span>
-                <button className="icon-button meta-pill" onClick={() => setChatSearchOpen((value) => !value)} aria-label="بحث في المحادثة" title="بحث في المحادثة"><SearchCheck size={16} /></button>
-              </div>
-            </div>
             {chatSearchOpen && (
               <div className="chat-search-bar">
                 <SearchCheck size={16} />
@@ -812,15 +827,13 @@ function AppV2() {
                 </div>
               ) : message.reply && (
                 <div className={`answer-row${searchClass}`} key={message.id} id={`msg-${index}`} data-index={index}><BrandMark small /><div className="answer-content">
-                  <div className="answer-heading"><strong>Nados AI</strong><span><i />{modeData[mode].label}{message.reply.usage?.total ? ` · Context: ${formatTokens(message.reply.usage.total)} / ${formatTokens(message.reply.usage.contextWindow)}` : ''}</span></div>
+                  <div className="answer-heading"><strong>Nados AI</strong><span><i />{modelVariant === 'v1.0' ? 'Nados v1.0' : 'Nados v1.1'} · {modeData[mode].label}{message.reply.usage?.total ? ` · Context: ${formatTokens(message.reply.usage.total)} / ${formatTokens(message.reply.usage.contextWindow)}` : ''}</span></div>
                   <RichAnswer answer={message.reply.answer} bullets={message.reply.bullets} />
-                  {settings.citations && message.reply.sources.length > 0 && <div className="sources-block"><div className="sources-title"><strong>المصادر</strong><span>{message.reply.sources.length}</span></div><div className="source-grid">{message.reply.sources.map((source, sourceIndex) => <a key={`${source.domain}-${sourceIndex}`} href={source.url} target="_blank" rel="noreferrer"><i style={{ background: source.accent }}>{sourceIndex + 1}</i><strong>{source.title}</strong><span>{source.domain}</span></a>)}</div></div>}
+                  {settings.citations && message.reply.sources.length > 0 && <div className="sources-block"><div className="sources-title"><strong>المصادر</strong><span>{message.reply.sources.length}</span></div><div className="source-chips">{message.reply.sources.map((source, sourceIndex) => <a className="source-chip" key={`${source.domain}-${sourceIndex}`} href={source.url} target="_blank" rel="noreferrer" title={`${source.title} — ${source.domain}`}><i style={{ background: source.accent }}>{sourceIndex + 1}</i><span>{source.domain}</span></a>)}</div></div>}
                   <div className="answer-actions">
-                    <button className="icon-button" onClick={() => copyAnswer(message.reply!)} aria-label="نسخ الإجابة" title="نسخ"><Clipboard size={17} /></button>
-                    {index === messages.length - 1 && <button className="icon-button" onClick={() => void regenerate(message.id)} disabled={loading} aria-label="إعادة التوليد" title="إعادة التوليد"><RefreshCw size={17} /></button>}
-                    {index === messages.length - 1 && <><button className={`icon-button ${feedback === 'up' ? 'selected' : ''}`} onClick={() => setFeedback('up')} aria-label="إجابة مفيدة" title="مفيدة"><ThumbsUp size={17} /></button><button className={`icon-button ${feedback === 'down' ? 'selected' : ''}`} onClick={() => setFeedback('down')} aria-label="إجابة غير مفيدة" title="غير مفيدة"><ThumbsDown size={17} /></button></>}
-                    <span className="action-separator" />
-                    <button className="icon-button" onClick={() => setMoreMenuFor(moreMenuFor === message.id ? null : message.id)} aria-label="المزيد" title="المزيد"><MoreHorizontal size={17} /></button>
+                    <button className="icon-button" onClick={() => copyAnswer(message.reply!)} aria-label="نسخ الإجابة" title="نسخ"><Clipboard size={15} /></button>
+                    {index === messages.length - 1 && <button className="icon-button" onClick={() => void regenerate(message.id)} disabled={loading} aria-label="إعادة التوليد" title="إعادة التوليد"><RefreshCw size={15} /></button>}
+                    <button className="icon-button" onClick={() => setMoreMenuFor(moreMenuFor === message.id ? null : message.id)} aria-label="المزيد" title="المزيد"><MoreHorizontal size={15} /></button>
                     {moreMenuFor === message.id && (
                       <div className="actions-more-menu" role="menu">
                         <button role="menuitem" onClick={() => { speakAnswer(message.reply!); setMoreMenuFor(null) }}><Volume2 size={15} /> قراءة الإجابة</button>
@@ -835,32 +848,13 @@ function AppV2() {
               })}
               {loading && <div className="answer-row answer-row--streaming"><BrandMark small /><div className="answer-content">
                 <div className="answer-heading"><strong>Nados AI</strong><span><i />{`الذاكرة ${settings.memory ? 'مفعلة' : 'بدون'} · ${selectedModel.label}`}</span><button type="button" className="stop-generation" onClick={stopGeneration} aria-label="إيقاف التوليد" title="إيقاف التوليد"><Square size={14} /> إيقاف</button></div>
-                {reply ? <RichAnswer answer={reply.answer} bullets={reply.bullets} /> : (
-                  <div className="thinking-panel">
-                    <button type="button" className="thinking-panel__header" onClick={() => setReasoningOpen((value) => !value)} aria-expanded={reasoningOpen} aria-label="تبديل قسم التفكير">
-                      <div className="thinking-panel__title">
-                        <span className="thinking-panel__dot" />
-                        <span>{loading && !reply ? 'يفكر...' : 'التفكير'}</span>
-                      </div>
-                      <div className="thinking-panel__status">
-                        <span className="thinking-wave"><span /><span /><span /></span>
-                        <span>{reasoningOpen ? 'إخفاء' : 'إظهار'}</span>
-                      </div>
-                    </button>
-                    {reasoningOpen && (
-                      <div className="thinking-panel__body">
-                        <p>{mode === 'research' ? 'أراجع عدة مصادر وأقارنها قبل أن أكتب التقرير النهائي.' : 'أحلل السؤال أولاً ثم أرتب الإجابة بشكل واضح ومباشر.'}</p>
-                        <ul>
-                          <li>أحدد الهدف من السؤال.</li>
-                          <li>أجمع المعلومات الأساسية ذات العلاقة.</li>
-                          <li>أصوغ الإجابة النهائية بأسلوب عملي.</li>
-                        </ul>
-                      </div>
-                    )}
+                {reply ? <RichAnswer answer={reply.answer} bullets={reply.bullets} streaming /> : (
+                  <div className="thinking-plain" aria-live="polite">
+                    <span className="thinking-wave"><span /><span /><span /></span>
+                    <span>{mode === 'research' ? 'أبحث وأحلّل المصادر…' : 'تُحضّر الإجابة…'}</span>
                   </div>
                 )}
               </div></div>}
-              {!loading && messages.length > 1 && <div className="followups"><span>تابع المحادثة</span>{['ما الخطوات العملية؟', 'قارن بين الخيارات', 'أعطني مثالاً واقعياً'].map((item) => <button key={item} onClick={() => submit(item)}>{item}<ArrowLeft size={15} /></button>)}</div>}
             </article>
             <div className="chat-composer-wrap"><Composer compact {...composerProps} /></div>
           </section>
@@ -868,18 +862,16 @@ function AppV2() {
 
         {view === 'discover' && <DiscoverView onAsk={submit} />}
         {view === 'training' && <TrainingCenter />}
-        {(view === 'agents' || view === 'work') && <AgentManager />}
+        {view === 'agents' && <AgentManager />}
         {view === 'library' && <LibraryView history={history} spaces={spaces} onOpen={openCurrentSession} />}
         {view === 'spaces' && <SpacesView spaces={spaces} setSpaces={setSpaces} onAsk={submit} />}
-        {view === 'studio' && <StudioView connected={capabilities.features.images} />}
-        {view === 'computer' && <ComputerView enabled={capabilities.features.computer} />}
         {view === 'connectors' && <ConnectorsView />}
       </main>
 
-      {settingsOpen && <SettingsPanel settings={settings} capabilities={capabilities} onClose={() => setSettingsOpen(false)} onProvidersChanged={() => { void Promise.all([getNadosCapabilities(), getNadosModels()]).then(([nextCapabilities, nextModels]) => { setCapabilities(nextCapabilities); if (nextModels.length) setModels(nextModels) }) }} onChange={updateSettings} />}
+      {settingsOpen && <SettingsPanel settings={settings} capabilities={capabilities} onClose={() => setSettingsOpen(false)} onProvidersChanged={() => { void Promise.all([getNadosCapabilities(), getNadosModels()]).then(([nextCapabilities, nextModels]) => { setCapabilities(nextCapabilities); if (nextModels.length) setModels(nextModels) }) }} onChange={updateSettings} onClearSessions={() => { void (async () => { for (const item of sessions) { try { await deleteSession(item.id) } catch {} } setSessions([]); setActiveSessionId(''); setToast('تم حذف كل المحادثات.') })() }} onExportData={() => { try { const blob = new Blob([JSON.stringify({ settings, sessions, spaces, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'nados-data.json'; anchor.click(); URL.revokeObjectURL(url); setToast('تم تصدير بياناتك.') } catch { setToast('تعذّر التصدير.') } }} />}
       {voiceOpen && <VoiceDialog cloudTranscription={capabilities.features.transcription} onClose={() => setVoiceOpen(false)} onSubmit={(text) => { voiceReply.current = true; setVoiceOpen(false); submit(text) }} />}
       {view === 'chat' && (
-        <button className={`scroll-to-bottom ${showScrollButton ? '' : 'hidden'}`} onClick={() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })} aria-label="الانتقال للأسفل" title="الانتقال للأسفل">
+        <button className={`scroll-to-bottom ${showScrollButton ? '' : 'hidden'}`} onClick={() => { const el = document.querySelector<HTMLElement>('.main-content') || document.documentElement; el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }) }} aria-label="الانتقال للأسفل" title="الانتقال للأسفل">
           <ArrowDown size={18} />
         </button>
       )}

@@ -6,7 +6,6 @@ const connectedFeatures = {
   webSearch: true,
   vision: true,
   video: true,
-  images: true,
   transcription: true,
   speech: true,
   computer: true,
@@ -17,7 +16,7 @@ test('describes Nados product capabilities instead of raw model limitations', ()
   assert.match(instructions, /بحث الإنترنت المباشر متصل/)
   assert.match(instructions, /تحليل الصور/)
   assert.match(instructions, /تحليل ملفات الفيديو/)
-  assert.match(instructions, /إنشاء صور حقيقية/)
+  assert.match(instructions, /إنشاء الصور والفيديو غير موجود في Nados/)
   assert.match(instructions, /لا تقل إنك تقتصر على المعرفة الداخلية/)
 })
 
@@ -30,7 +29,7 @@ test('does not claim unavailable capabilities are connected', () => {
   const instructions = modeInstructions('create', { webSearch: false, vision: false, video: false, images: false })
   assert.match(instructions, /بحث الإنترنت المباشر غير متاح حالياً/)
   assert.match(instructions, /تحليل الفيديو غير متاح حالياً/)
-  assert.match(instructions, /إنشاء الصور غير متاح حالياً/)
+  assert.match(instructions, /إنشاء الصور والفيديو غير موجود في Nados/)
 })
 
 test('recognizes product capability questions without intercepting normal searches', () => {
@@ -51,7 +50,7 @@ test('builds a capability answer from live feature flags', () => {
   assert.match(text, /متصل بخدمات وأدوات فعلية/)
   assert.match(text, /البحث المباشر في الإنترنت/)
   assert.match(text, /تحليل الفيديو المرفق/)
-  assert.match(text, /غير متاح حالياً: إنشاء الفيديو/)
+  assert.match(text, /غير متاح حالياً: إنشاء الصور، إنشاء الفيديو/)
 })
 
 test('answers Nados identity questions from the product core', () => {

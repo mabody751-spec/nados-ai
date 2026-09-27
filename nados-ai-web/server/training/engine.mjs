@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { providerStatuses } from '../providers.mjs'
 import { findRuntimeProvider } from '../providerStore.mjs'
+import { nvidiaTeacherEntries } from '../nvidiaModels.mjs'
 import { modelTokenLimits, estimateTokens } from '../tokenBudget.mjs'
 
 const CODE_PATTERNS = /اكتب\s+(كود|دالة|وظيفة|دوال|فئة|برنامج|سكريبت)|\b(function|class|component|api|script|code)\b|برمجة|package\.json|regex|import|export/i
@@ -28,28 +29,56 @@ export function classifyTask(message, hasFile = false, fileMime = '') {
 
 export function buildProviderRegistry() {
   const statuses = providerStatuses()
-  return statuses.map((item) => {
+  const registry = statuses.map((item) => {
     const id = item.id
     const isBuiltIn = ['gemini', 'groq', 'nvidia', 'openai', 'openrouter', 'cloudflare', 'huggingface'].includes(id)
     const model = item.model || id
     const limits = modelTokenLimits(model)
     return {
       id,
+      providerId: id,
       name: item.name,
       kind: isBuiltIn ? 'builtin' : 'custom',
       configured: Boolean(item.configured),
       model,
+      catalog: false,
       capabilities: {
         contextWindow: limits.context,
         maxOutput: limits.maxOutput,
         longContext: limits.context >= 200_000,
-        reasoning: /deepseek|glm|nemotron|gpt-oss|gemini|qwen|minimax|muse/i.test(model),
-        coding: /deepseek|glm|gpt-oss|qwen|nemotron/i.test(model),
+        reasoning: /deepseek|glm|nemotron|gpt-oss|gemini|qwen|minimax|muse|kimi|laguna/i.test(model),
+        coding: /deepseek|glm|gpt-oss|qwen|nemotron|laguna|coder/i.test(model),
         vision: /gemini|vision|gemma|diffusiongemma|llama-3\.2/i.test(model),
         metered: Boolean(limits.tpm),
       },
     }
   }).filter((item) => item.configured)
+
+  // Every NVIDIA model that answered a live probe joins the teacher pool, so the
+  // catalogue participates in swarm learning (and therefore in training data).
+  for (const entry of nvidiaTeacherEntries()) {
+    const limits = modelTokenLimits(entry.model)
+    registry.push({
+      id: entry.id,
+      providerId: entry.providerId,
+      name: entry.name,
+      kind: 'catalog',
+      configured: true,
+      model: entry.model,
+      catalog: true,
+      capabilities: {
+        contextWindow: limits.context,
+        maxOutput: limits.maxOutput,
+        longContext: limits.context >= 200_000,
+        reasoning: /deepseek|glm|nemotron|reason|gpt-oss|qwen|kimi|laguna|muse/i.test(entry.model),
+        coding: /code|deepseek|glm|qwen|nemotron|laguna/i.test(entry.model),
+        vision: /vision|vl|vlm|gemma-3|gemma-4/i.test(entry.model),
+        metered: Boolean(limits.tpm),
+      },
+    })
+  }
+
+  return registry
 }
 
 export function eligibleTeachers(registry, taskTypes, hasFile = false) {
@@ -112,20 +141,51 @@ export function evaluateResponse({ message, response, taskTypes = [], teacherCou
   return { qualityScore: Number(score.toFixed(3)), agreementScore: null, accepted: score >= 0.55, reasons, teacherCount }
 }
 
+export const MAX_TEACHERS = Number(process.env.NADOS_TRAINING_MAX_TEACHERS) || 6
+const TEACHER_TIMEOUT_MS = Number(process.env.NADOS_TRAINING_TEACHER_TIMEOUT_MS) || 120_000
+
+// Keeps the teacher pool bounded and diverse: built-in providers first, then the
+// catalog models (which are the newly added NVIDIA ones).
+function selectTeachers(eligible) {
+  const plain = eligible.filter((teacher) => !teacher.catalog)
+  const catalog = eligible.filter((teacher) => teacher.catalog)
+  return [...plain, ...catalog].slice(0, Math.max(1, MAX_TEACHERS))
+}
+
+function withTimeout(promise, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`تجاوز المعلم مهلة ${Math.round(timeoutMs / 1000)}ث`)), timeoutMs)
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      (error) => { clearTimeout(timer); reject(error) },
+    )
+  })
+}
+
 export async function swarmLearn({ callProvider, message, mode = 'create', file = null, instructions = '', teachers = null }) {
   const taskTypes = classifyTask(message, Boolean(file), file?.mimetype || '')
   const registry = teachers || buildProviderRegistry()
-  const eligible = eligibleTeachers(registry, taskTypes, Boolean(file))
+  const eligible = selectTeachers(eligibleTeachers(registry, taskTypes, Boolean(file)))
   if (!eligible.length) {
     return { taskTypes, teachers: [], outputs: [], best: null, status: 'WAITING_FOR_PROVIDER', reason: 'لا يوجد معلم مؤهل لهذا النوع من المهام.' }
   }
 
   const attempts = eligible.map(async (teacher) => {
     try {
-      const result = await callProvider(teacher.id, { message, mode, file, instructions, history: [] })
-      return { teacherId: teacher.id, teacherModel: teacher.model, ...result, ok: true }
+      const result = await withTimeout(
+        Promise.resolve(callProvider(teacher.providerId || teacher.id, {
+          message,
+          mode,
+          file,
+          instructions,
+          history: [],
+          ...(teacher.catalog && teacher.model ? { modelOverride: teacher.model } : {}),
+        })),
+        TEACHER_TIMEOUT_MS,
+      )
+      return { teacherId: teacher.id, teacherProvider: teacher.providerId || teacher.id, teacherModel: teacher.model, ...result, ok: true }
     } catch (error) {
-      return { teacherId: teacher.id, teacherModel: teacher.model, ok: false, error: String(error?.message || error) }
+      return { teacherId: teacher.id, teacherProvider: teacher.providerId || teacher.id, teacherModel: teacher.model, ok: false, error: String(error?.message || error) }
     }
   })
   const settled = await Promise.allSettled(attempts)
