@@ -23,6 +23,8 @@
     "android:aab": "npm run build && cap sync android && cap build android --androidreleasetype AAB",
     "android:assets": "capacitor-assets generate --android",
     "smoke": "node scripts/smoke.mjs",
+    "eval": "node scripts/eval.mjs",
+    "tunnel:watch": "node scripts/tunnel-watch.mjs",
     "docker:build": "npm run build && docker build -t nados-api ."
   },
   "dependencies": {

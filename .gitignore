@@ -4,3 +4,23 @@
 !.dev.vars.example
 .env*
 !.env.example
+
+# Nados Work mode: real per-project execution workspaces (runtime data).
+workspaces/
+
+# Local toolchains / large artifacts (never commit)
+.tools/
+.kilo/
+.vscode/
+*.gguf
+*.ca
+llama-bin-win/
+llama-cpp-old/
+llama-zip/
+kaggle-*/
+kaggle-pull/
+kaggle-output*/
+agent-*.txt
+sandbox-test.txt
+index.html
+nados-*.png
