@@ -23,13 +23,18 @@ async function check(name, fn) {
 
 await check('healthz', async () => {
   const res = await fetch(`${base}/healthz`, { signal: AbortSignal.timeout(15000) })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const body = await res.json()
-  return `status=${body.status}`
+  if (res.ok) { const body = await res.json(); return `status=${body.status}` }
+  // A Cloudflare Worker base serves assets + /api only; fall back to /api/health.
+  const api = await fetch(`${base}/api/health`, { headers, signal: AbortSignal.timeout(30000) })
+  if (!api.ok) throw new Error(`HTTP ${api.status}`)
+  const body = await api.json()
+  return `via /api/health provider=${body.provider} configured=${body.configured}`
 })
 
 await check('readyz', async () => {
   const res = await fetch(`${base}/readyz`, { headers, signal: AbortSignal.timeout(15000) })
+  if (res.status === 404) return 'n/a on this endpoint (server-only)'
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const body = await res.json().catch(() => ({}))
   return `status=${res.status} providers=${body.providers}`
 })
