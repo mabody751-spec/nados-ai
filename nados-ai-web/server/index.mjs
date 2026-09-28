@@ -10,6 +10,8 @@ import { callExternalProviders, callSelectedProvider, hasExternalProvider, provi
 testProvider, initializeAllProviders, getProviderCapabilities, getAllProvidersHealth, getProviderHealth, 
 getProviderStats, recordProviderResult, resetProviderStats, callDeepResearch, localModelStatus } from './providers.mjs'
 import { MAX_CONVERSATION_BYTES, validateConversationHistory, validateMessageText } from './limits.mjs'
+import { historyCharacterBudget } from './tokenBudget.mjs'
+import { buildContextHistory } from './contextEngine.mjs'
 import { synthesizeWithGemini, transcribeWithGroq } from './mediaProviders.mjs'
 import { hasProviderApiKey } from './providerKeys.mjs'
 import { providerCatalog, publicRuntimeProviders, removeRuntimeProvider, upsertRuntimeProvider } from './providerStore.mjs'
@@ -836,6 +838,13 @@ app.post('/api/chat/stream', chatRateLimit, upload.array('files', 5), async (req
     const modelMessage = `${liveNow}\n\n${message}`
     const selectedModel = resolveModelSelection(model)
 
+    // Extended memory: keep recent turns verbatim, carry the most relevant older
+    // turns, and compress the rest into an extractive memory block, so very long
+    // conversations stay coherent without a fictitious model context window.
+    const engine = buildContextHistory(history, message, { budgetChars: historyCharacterBudget(selectedModel.model) })
+    const contextHistory = engine.history
+    const instructionsForModel = engine.memory ? `${instructions}\n\n${engine.memory}` : instructions
+
     if (isNadosIdentityQuestion(message)) {
       sendCompletedReply(response, identityReply(), message)
       return
@@ -849,7 +858,7 @@ app.post('/api/chat/stream', chatRateLimit, upload.array('files', 5), async (req
 if (selectedModel.providerId === 'nados') {
       // Deep Research mode for research/academic
       if (providerMode === 'research' || providerMode === 'academic') {
-        const deepResult = await callDeepResearch({ message: modelMessage, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions, modelOverride: selectedModel.model })
+        const deepResult = await callDeepResearch({ message: modelMessage, history: contextHistory, mode: providerMode, file: primaryFile, files: chatFiles, instructions: instructionsForModel, modelOverride: selectedModel.model })
         if (deepResult?.text) {
           sendEvent(response, { type: 'meta', provider: 'nados' })
           if (deepResult.thinking) {
@@ -882,7 +891,7 @@ if (selectedModel.providerId === 'nados') {
       const preferLocal = variant === 'v1.1' && providerMode !== 'research' && providerMode !== 'academic' && await localModelStatus()
       if (preferLocal) {
         try {
-          const localResult = await callLocalNados({ message, files: chatFiles, history, instructions, model: selectedModel.model, temperature: Number.isFinite(userTemperature) ? userTemperature : undefined })
+          const localResult = await callLocalNados({ message, files: chatFiles, history: contextHistory, instructions: instructionsForModel, model: selectedModel.model, temperature: Number.isFinite(userTemperature) ? userTemperature : undefined })
           sendEvent(response, { type: 'meta', provider: 'nados', model: 'Nados v1.1', variant: 'v1.1' })
           for (let index = 0; index < localResult.text.length; index += 72) sendEvent(response, { type: 'delta', delta: localResult.text.slice(index, index + 72) })
           sendEvent(response, { type: 'done', reply: { ...splitAnswer(localResult.text), sources: [], provider: 'nados', model: 'Nados v1.1', variant: 'v1.1', demo: false, usage: localResult.usage } })
@@ -896,7 +905,7 @@ if (selectedModel.providerId === 'nados') {
       // السرعة أولاً: المعلمون السريعون → النموذج المحلي المدرَّب احتياطياً
       let externalResult = null
       try {
-        externalResult = await callExternalProviders({ message: modelMessage, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions })
+        externalResult = await callExternalProviders({ message: modelMessage, history: contextHistory, mode: providerMode, file: primaryFile, files: chatFiles, instructions: instructionsForModel })
       } catch {}
       if (externalResult?.text) {
         sendEvent(response, { type: 'meta', provider: 'nados', model: variant === 'v1.0' ? 'Nados v1.0' : 'Nados v1.1', variant })
@@ -919,7 +928,7 @@ if (selectedModel.providerId === 'nados') {
         return response.end()
       }
       try {
-        const localResult = await callLocalNados({ message, files: chatFiles, history, instructions, model: selectedModel.model, temperature: Number.isFinite(userTemperature) ? userTemperature : undefined })
+        const localResult = await callLocalNados({ message, files: chatFiles, history: contextHistory, instructions: instructionsForModel, model: selectedModel.model, temperature: Number.isFinite(userTemperature) ? userTemperature : undefined })
         sendEvent(response, { type: 'meta', provider: 'nados' })
         for (let index = 0; index < localResult.text.length; index += 72) sendEvent(response, { type: 'delta', delta: localResult.text.slice(index, index + 72) })
         sendEvent(response, { type: 'done', reply: { ...splitAnswer(localResult.text), sources: [], provider: 'nados', demo: false, usage: localResult.usage } })
@@ -938,7 +947,7 @@ if (selectedModel.providerId === 'nados') {
     }
 
     if (selectedModel.providerId === 'nados-local') {
-      const local = await callLocalNados({ message, files: chatFiles, history, instructions, model: selectedModel.model })
+      const local = await callLocalNados({ message, files: chatFiles, history: contextHistory, instructions: instructionsForModel, model: selectedModel.model })
       sendEvent(response, { type: 'meta', provider: 'nados' })
       for (let index = 0; index < local.text.length; index += 72) sendEvent(response, { type: 'delta', delta: local.text.slice(index, index + 72) })
       sendEvent(response, { type: 'done', reply: { ...splitAnswer(local.text), sources: [], provider: 'nados', demo: false, usage: local.usage } })
@@ -947,7 +956,7 @@ if (selectedModel.providerId === 'nados') {
     }
 
     if (selectedModel.providerId !== 'auto' && selectedModel.providerId !== 'openai') {
-      const selected = await callSelectedProvider({ message: modelMessage, history, mode: providerMode, file: primaryFile, files: chatFiles, instructions }, selectedModel.providerId, selectedModel.model)
+      const selected = await callSelectedProvider({ message: modelMessage, history: contextHistory, mode: providerMode, file: primaryFile, files: chatFiles, instructions: instructionsForModel }, selectedModel.providerId, selectedModel.model)
       sendEvent(response, { type: 'meta', provider: 'nados' })
       for (let index = 0; index < selected.text.length; index += 72) sendEvent(response, { type: 'delta', delta: selected.text.slice(index, index + 72) })
       sendEvent(response, { type: 'done', reply: { ...splitAnswer(selected.text), sources: decorateSources(selected.sources), provider: 'nados', demo: false, usage: selected.usage } })
@@ -957,12 +966,12 @@ if (selectedModel.providerId === 'nados') {
 
     if (selectedModel.providerId === 'auto' && hasExternalProvider()) {
       const external = await callExternalProviders({
-        message,
-        history,
+        message: modelMessage,
+        history: contextHistory,
         mode: providerMode,
         file: primaryFile,
         files: chatFiles,
-        instructions,
+        instructions: instructionsForModel,
       })
       if (external?.text) {
         sendEvent(response, { type: 'meta', provider: 'nados' })
