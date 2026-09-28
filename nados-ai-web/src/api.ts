@@ -39,7 +39,8 @@ export interface ChatReply {
   bullets: string[]
   sources: Source[]
   responseId?: string
-  variant?: 'v1.1' | 'v1.0'
+  variant?: 'v1.1' | 'v1.0' | 'local'
+  memory?: { total: number; recent: number; relevant: number; digested: number; keptChars?: number; memoryChars?: number }
   provider?: string
   model?: string
   demo?: boolean

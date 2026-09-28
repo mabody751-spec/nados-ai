@@ -74,6 +74,10 @@ const HARD = [
   { id: 'reverse', num: 1, prompt: 'اكتب الكلمة (نادوس) معكوسة الحروف. أجب بالكلمة فقط.', check: (t) => /سودان/.test(t.slice(0, 20)) },
   { id: 'one_word', num: 1, prompt: 'أجب بكلمة واحدة فقط: ما لون السماء في النهار الصافي؟', check: (t) => { const words = t.replace(/[.،!؟]/g, ' ').trim().split(/\s+/).filter(Boolean); return words.length === 1 && /أزرق|سماوي|الأزرق|السماوي/.test(words[0]) } },
   { id: 'no_hallucination', num: 1, prompt: 'من هو مخترع جهاز «راكد صقر 9000»؟', check: (t) => /لا\s*(يوجد|أعرف|يمكن|توجد|معلومات)|غير\s*موجود|غير\s*معروف|خيال|وهمي|لا\s*أستطيع|لا\s*يتوفر|غير\s*حقيقي|أسطو/.test(t) && !/(اخترعه|مخترعه|العالم|الدكتور|المهندس)\s+\S+\s+\S+/i.test(t) },
+  { id: 'ar_plural', num: 1, prompt: 'ما جمع كلمة (كتاب) في العربية؟ أجب بالجمع فقط.', check: (t) => /كُ?تب/.test(t.slice(0, 20)) },
+  { id: 'km_to_m', num: 1, prompt: 'إذا كان 1 كيلومتر = 1000 متر، فكم متراً في 2.5 كيلومتر؟ أجب بالرقم فقط.', check: (t) => /(^|\D)2500(\D|$)/.test(normalize(t).trim().slice(0, 16)) },
+  { id: 'fraction', num: 1, prompt: 'كم يساوي نصف الثلث من 60؟ أجب بالرقم فقط.', check: (t) => /(^|\D)10(\D|$)/.test(normalize(t).trim().slice(0, 16)) },
+  { id: 'time_until', num: 1, prompt: 'إذا كانت الساعة الآن 3:45، فكم دقيقة تبقّى حتى الساعة 5:00؟ أجب بالرقم فقط.', check: (t) => /(^|\D)75(\D|$)/.test(normalize(t).trim().slice(0, 16)) },
 ]
 const TASK_SETS = { base: TASKS, hard: HARD }
 

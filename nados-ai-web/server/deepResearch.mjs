@@ -219,10 +219,22 @@ export async function deepSearch(query, options = {}) {
     if (currentQuery === query) break
   }
 
-  const finalSources = deduplicateSources(allSources)
+  const ranked = deduplicateSources(allSources)
     .filter((source) => (source.score ?? 0) >= 0)
     .sort((a, b) => (b.score || 0) - (a.score || 0))
-    .slice(0, MAX_TOTAL_SOURCES)
+  // Prefer domain diversity: at most two results per domain so the answer is not
+  // built from a single site, then fill the remaining slots by score.
+  const perDomain = new Map()
+  const diverse = []
+  const overflow = []
+  const domainOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url } }
+  for (const source of ranked) {
+    const domain = domainOf(source.url)
+    const count = perDomain.get(domain) || 0
+    if (count < 2) { perDomain.set(domain, count + 1); diverse.push(source) }
+    else overflow.push(source)
+  }
+  const finalSources = [...diverse, ...overflow].slice(0, MAX_TOTAL_SOURCES)
   return {
     query,
     sources: finalSources,

@@ -960,6 +960,7 @@ if (selectedModel.providerId === 'nados') {
             provider: 'nados',
             model: variant === 'v1.0' ? 'Nados v1.0' : 'Nados v1.1',
             variant,
+            memory: engine.stats,
             demo: false,
             usage: externalResult.usage,
           },
@@ -999,7 +1000,7 @@ if (selectedModel.providerId === 'nados') {
       const selected = await callSelectedProvider({ message: modelMessage, history: contextHistory, mode: providerMode, file: primaryFile, files: chatFiles, instructions: instructionsForModel }, selectedModel.providerId, selectedModel.model)
       sendEvent(response, { type: 'meta', provider: 'nados' })
       for (let index = 0; index < selected.text.length; index += 72) sendEvent(response, { type: 'delta', delta: selected.text.slice(index, index + 72) })
-      sendEvent(response, { type: 'done', reply: { ...splitAnswer(selected.text), sources: decorateSources(selected.sources), provider: 'nados', demo: false, usage: selected.usage } })
+      sendEvent(response, { type: 'done', reply: { ...splitAnswer(selected.text), sources: decorateSources(selected.sources), provider: 'nados', memory: engine.stats, demo: false, usage: selected.usage } })
       saveConversation({ message, reply: selected.text, mode: providerMode, provider: selected.provider, sources: selected.sources || [] })
       return response.end()
     }
