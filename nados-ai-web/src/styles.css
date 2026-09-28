@@ -285,7 +285,7 @@ kbd { border: 1px solid #454d46; border-radius: 4px; color: #8f9891; padding: 2p
   gap: 12px;
   padding: 22px 18px 10px;
 }
-.hero-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.hero-badges { display: none; }
 .hero-badge {
   display: inline-flex;
   align-items: center;
@@ -586,7 +586,7 @@ kbd { border: 1px solid #454d46; border-radius: 4px; color: #8f9891; padding: 2p
 .matrix-label { display: inline-flex; align-items: center; min-height: 24px; padding: 0 8px; border-radius: 999px; background: rgb(var(--mint-rgb) / 0.12); color: var(--mint-dark); font-size: 10px; font-weight: 700; }
 .matrix-card h3 { margin: 12px 0 8px; font-size: 18px; line-height: 1.5; }
 .matrix-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.8; }
-.suggestions { width: min(100%, 720px); display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 13px; position: relative; z-index: 2; }
+.suggestions { display: none; }
 .suggestions > button {
   min-height: 70px;
   border: 1px solid rgb(var(--mint-rgb) / 0.12);
