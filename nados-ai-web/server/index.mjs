@@ -12,6 +12,7 @@ getProviderStats, recordProviderResult, resetProviderStats, callDeepResearch, lo
 import { MAX_CONVERSATION_BYTES, validateConversationHistory, validateMessageText } from './limits.mjs'
 import { historyCharacterBudget } from './tokenBudget.mjs'
 import { buildContextHistory } from './contextEngine.mjs'
+import { validateUploads } from './uploads.mjs'
 import { synthesizeWithGemini, transcribeWithGroq } from './mediaProviders.mjs'
 import { hasProviderApiKey } from './providerKeys.mjs'
 import { providerCatalog, publicRuntimeProviders, removeRuntimeProvider, upsertRuntimeProvider } from './providerStore.mjs'
@@ -112,6 +113,32 @@ app.use('/api', (request, response, next) => {
   if (!proxyToken || isLocalRequest(request)) return next()
   if (safeTokenEqual(request.get('x-nados-proxy-token') || '', proxyToken)) return next()
   response.status(401).json({ error: 'غير مصرّح: واجهة API محمية برمز النفق.' })
+})
+
+// Lightweight observability (Phase 8): counters exposed at /api/metrics so the
+// deployed service can be watched without an external APM.
+const metrics = { startedAt: Date.now(), requests: 0, errors: 0, chatRequests: 0, byPrefix: new Map() }
+app.use('/api', (request, response, next) => {
+  metrics.requests += 1
+  const prefix = `/${String(request.path || '').split('/').filter(Boolean).slice(0, 2).join('/')}`
+  metrics.byPrefix.set(prefix, (metrics.byPrefix.get(prefix) || 0) + 1)
+  if (request.path === '/chat/stream') metrics.chatRequests += 1
+  response.on('finish', () => { if (response.statusCode >= 500) metrics.errors += 1 })
+  next()
+})
+
+app.get('/api/metrics', (_request, response) => {
+  const memory = process.memoryUsage()
+  response.json({
+    uptimeSeconds: Math.round((Date.now() - metrics.startedAt) / 1000),
+    requests: metrics.requests,
+    errors: metrics.errors,
+    chatRequests: metrics.chatRequests,
+    byPrefix: Object.fromEntries([...metrics.byPrefix.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20)),
+    processUptimeSeconds: Math.round(process.uptime()),
+    memoryMb: { rss: Math.round(memory.rss / 1048576), heapUsed: Math.round(memory.heapUsed / 1048576) },
+    providers: getProviderStats(),
+  })
 })
 
 function modelFor(mode, file) {
@@ -823,6 +850,11 @@ app.post('/api/chat/stream', chatRateLimit, upload.array('files', 5), async (req
       computer: process.platform === 'win32' && hasProviderApiKey('gemini'),
     }
     const chatFiles = request.files || []
+    const uploadError = validateUploads(chatFiles)
+    if (uploadError) {
+      sendEvent(response, { type: 'error', message: uploadError })
+      return response.end()
+    }
     const primaryFile = chatFiles.find((item) => item.mimetype?.startsWith('image/')) || chatFiles[0] || null
     const enableThinking = request.body?.thinking === 'true'
     const customPrompt = String(request.body?.system_prompt || '').trim().slice(0, 2000)
