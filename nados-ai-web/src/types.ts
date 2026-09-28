@@ -34,6 +34,7 @@ export interface AppSettings {
   notifications?: boolean
   voiceReplies?: boolean
   defaultThinking?: boolean
+  memoryDepth?: 'full' | 'balanced' | 'off'
 }
 
 export const initialHistory: HistoryItem[] = [

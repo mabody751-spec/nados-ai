@@ -562,7 +562,7 @@ function AppV2() {
       }, (thinking) => {
         setThinkingSteps(thinking)
         setReasoningOpen(true)
-      }, { enableThinking, systemPrompt: settings.systemPrompt, temperature: settings.temperature ?? 0.7, variant: modelVariant })
+      }, { enableThinking, systemPrompt: settings.systemPrompt, temperature: settings.temperature ?? 0.7, variant: modelVariant, memoryDepth: settings.memoryDepth || 'balanced' })
     } finally {
       abortControllerRef.current = null
     }

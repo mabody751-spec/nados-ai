@@ -378,6 +378,7 @@ export function SettingsPanel({ settings, capabilities, onChange, onProvidersCha
             </div>
             <div className="settings-group">
               <h3>التخصيص</h3>
+              <div className="settings-choice"><span>عمق الذاكرة الممتدة</span><div className="segmented-control"><button className={(settings.memoryDepth ?? 'balanced') === 'full' ? 'active' : ''} onClick={() => onChange({ memoryDepth: 'full' })}>كامل</button><button className={(settings.memoryDepth ?? 'balanced') === 'balanced' ? 'active' : ''} onClick={() => onChange({ memoryDepth: 'balanced' })}>متوازن</button><button className={settings.memoryDepth === 'off' ? 'active' : ''} onClick={() => onChange({ memoryDepth: 'off' })}>موقوف</button></div><small>«كامل» يحتفظ بسياق أطول من المحادثة (ذاكرة ممتدة)، و«موقوف» يرسل آخر الرسائل فقط.</small></div>
               <div className="settings-prompt">
                 <label htmlFor="system-prompt">التعليمات الأساسية (System Prompt)</label>
                 <textarea id="system-prompt" value={settings.systemPrompt || ''} onChange={(event) => onChange({ systemPrompt: event.target.value })} rows={4} maxLength={2000} placeholder="تعليمات مخصصة تتبعها Nados في كل محادثة — مثال: أجب بإيجاز وبأسلوب تقني." dir="auto" />

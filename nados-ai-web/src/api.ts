@@ -353,13 +353,14 @@ export async function askNados(
   signal?: AbortSignal,
   onMeta?: (provider: string, modelLabel: string) => void,
   onThinking?: (thinking: ThinkingStep[]) => void,
-  options?: { enableThinking?: boolean; systemPrompt?: string; temperature?: number; variant?: 'v1.1' | 'v1.0' | 'local' },
+  options?: { enableThinking?: boolean; systemPrompt?: string; temperature?: number; variant?: 'v1.1' | 'v1.0' | 'local'; memoryDepth?: 'full' | 'balanced' | 'off' },
 ): Promise<ChatReply> {
   const form = new FormData()
   form.set('message', question)
   form.set('mode', mode)
   form.set('model', model)
   form.set('variant', options?.variant === 'v1.0' ? 'v1.0' : options?.variant === 'local' ? 'local' : 'v1.1')
+  if (options?.memoryDepth) form.set('memory_depth', options.memoryDepth)
   if (options?.enableThinking) form.set('thinking', 'true')
   if (options?.systemPrompt?.trim()) form.set('system_prompt', options.systemPrompt.trim().slice(0, 2000))
   if (typeof options?.temperature === 'number') form.set('temperature', String(options.temperature))

@@ -874,7 +874,19 @@ app.post('/api/chat/stream', chatRateLimit, upload.array('files', 5), async (req
     // Extended memory: keep recent turns verbatim, carry the most relevant older
     // turns, and compress the rest into an extractive memory block, so very long
     // conversations stay coherent without a fictitious model context window.
-    const engine = buildContextHistory(history, message, { budgetChars: historyCharacterBudget(selectedModel.model) })
+    const memoryDepth = String(request.body?.memory_depth || 'balanced').toLowerCase()
+    const depthProfile = memoryDepth === 'full'
+      ? { keepRecent: 30, maxRelevant: 12 }
+      : memoryDepth === 'off'
+        ? null
+        : { keepRecent: 12, maxRelevant: 6 }
+    const engine = depthProfile
+      ? buildContextHistory(history, message, {
+        budgetChars: historyCharacterBudget(selectedModel.model),
+        keepRecent: Number(process.env.NADOS_MEMORY_KEEP_RECENT) || depthProfile.keepRecent,
+        maxRelevant: Number(process.env.NADOS_MEMORY_MAX_RELEVANT) || depthProfile.maxRelevant,
+      })
+      : { history, memory: '', stats: { total: history.length, recent: history.length, relevant: 0, digested: 0 } }
     const contextHistory = engine.history
     const instructionsForModel = engine.memory ? `${instructions}\n\n${engine.memory}` : instructions
 
