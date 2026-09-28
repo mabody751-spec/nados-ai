@@ -155,8 +155,11 @@ function AppV2() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mode, setMode] = useState<SearchMode>('web')
   const [model, setModel] = useState<ModelId>('nados-v1')
-  const [modelVariant, setModelVariant] = useState<'v1.1' | 'v1.0'>(() => {
-    try { return localStorage.getItem('nados-variant') === 'v1.0' ? 'v1.0' : 'v1.1' } catch { return 'v1.1' }
+  const [modelVariant, setModelVariant] = useState<'v1.1' | 'v1.0' | 'local'>(() => {
+    try {
+      const stored = localStorage.getItem('nados-variant')
+      return stored === 'v1.0' ? 'v1.0' : stored === 'local' ? 'local' : 'v1.1'
+    } catch { return 'v1.1' }
   })
   const [models, setModels] = useState<NadosModelOption[]>([automaticModel])
   const [modeOpen, setModeOpen] = useState(false)
@@ -827,7 +830,7 @@ const workspaceMode = view === 'chat' || view === 'home' || view === 'discover' 
                 </div>
               ) : message.reply && (
                 <div className={`answer-row${searchClass}`} key={message.id} id={`msg-${index}`} data-index={index}><BrandMark small /><div className="answer-content">
-                  <div className="answer-heading"><strong>Nados AI</strong><span><i />{modelVariant === 'v1.0' ? 'Nados v1.0' : 'Nados v1.1'} · {modeData[mode].label}{message.reply.usage?.total ? ` · Context: ${formatTokens(message.reply.usage.total)} / ${formatTokens(message.reply.usage.contextWindow)}` : ''}</span></div>
+                  <div className="answer-heading"><strong>Nados AI</strong><span><i />{modelVariant === 'v1.0' ? 'Nados v1.0' : modelVariant === 'local' ? 'Nados v1.1 (مدرَّب)' : 'Nados v1.1'} · {modeData[mode].label}{message.reply.usage?.total ? ` · Context: ${formatTokens(message.reply.usage.total)} / ${formatTokens(message.reply.usage.contextWindow)}` : ''}</span></div>
                   <RichAnswer answer={message.reply.answer} bullets={message.reply.bullets} />
                   {settings.citations && message.reply.sources.length > 0 && <div className="sources-block"><div className="sources-title"><strong>المصادر</strong><span>{message.reply.sources.length}</span></div><div className="source-chips">{message.reply.sources.map((source, sourceIndex) => <a className="source-chip" key={`${source.domain}-${sourceIndex}`} href={source.url} target="_blank" rel="noreferrer" title={`${source.title} — ${source.domain}`}><i style={{ background: source.accent }}>{sourceIndex + 1}</i><span>{source.domain}</span></a>)}</div></div>}
                   <div className="answer-actions">

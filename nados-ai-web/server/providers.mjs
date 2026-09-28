@@ -50,7 +50,7 @@ export async function callLocalNados({ message, files, history = [], instruction
   const data = await fetchJson(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: model || 'nados-v1-1', messages, temperature: Number.isFinite(temperature) ? temperature : 0.7, max_tokens: computeMaxTokens({ model, instructions, history: fittedHistory, message: fittedContent }) }),
+    body: JSON.stringify({ model: model || 'nados-v1-1', messages, temperature: Number.isFinite(temperature) ? temperature : 0.7, max_tokens: Math.min(computeMaxTokens({ model, instructions, history: fittedHistory, message: fittedContent }), Number(process.env.NADOS_LOCAL_MAX_TOKENS) || 512) }),
   }, 'Nados v1.1')
   const text = contentText(data?.choices?.[0]?.message?.content)
   if (!text) throw new Error('Nados v1.1: لم يصل نص من الخادم المحلي.')

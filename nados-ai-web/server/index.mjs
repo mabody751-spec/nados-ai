@@ -830,7 +830,7 @@ app.post('/api/chat/stream', chatRateLimit, upload.array('files', 5), async (req
     const providerMode = effectiveProviderMode(mode, message, Boolean(chatFiles.length))
     const liveNow = liveContext()
     const baseInstructions = `${liveNow}\n\n${enableThinking
-      ? `${modeInstructions(providerMode, features, chatFiles[0] || null)}\n\nفكّر خطوة بخطوة داخلياً قبل الإجابة: حلل الطلب، قسّمه، ثم قدّم إجابة دقيقة ومنظمة.`
+      ? `${modeInstructions(providerMode, features, chatFiles[0] || null)}\n\n**تفكير عميق ممنهج (Deep Thinking):**\n1. **تحليل**: افهم الطلب تماماً، حدّد المطلوب الأساسي والفرعي، وتعرّف على القيود والسياق.\n2. **تخطيط**: قسّم المهمة إلى خطوات منطقية متسلسلة، حدّد المعلومات المطلوبة والأدوات اللازمة.\n3. **تنفيذ**: نفّذ كل خطوة بدقة، استخدم المنطق والأدلة، وتجنّب الافتراضات غير المؤكدة.\n4. **تحقّق**: راجع الإجابة ذاتياً: هل تجيب على السؤال كاملاً؟ هل المنطق سليم؟ هل توجد أخطاء محتملة؟\n5. **صِغ**: قدّم إجابة نهائية واضحة ومنظمة ودقيقة، مع الأدلة والمصادر إن وُجدت.\n\nفكّر بصوت عالٍ داخلياً عبر هذه المراحل قبل الإجابة النهائية.`
       : modeInstructions(providerMode, features, chatFiles[0] || null)}`
     const instructions = customPrompt ? `${baseInstructions}\n\nتعليمات المستخدم المخصصة (التزم بها حرفياً):\n${customPrompt}` : baseInstructions
     // The live date is also placed in the user turn: some models weight the user
@@ -887,14 +887,21 @@ if (selectedModel.providerId === 'nados') {
       // Model variant: "v1.1" (default) prefers the real trained Nados artifact
       // when connected, falling back to the fast teachers otherwise; "v1.0"
       // always uses the classic teachers pipeline.
-      const variant = String(request.body?.variant || 'v1.1').toLowerCase() === 'v1.0' ? 'v1.0' : 'v1.1'
-      const preferLocal = variant === 'v1.1' && providerMode !== 'research' && providerMode !== 'academic' && await localModelStatus()
+      const variantRaw = String(request.body?.variant || 'v1.1').toLowerCase()
+      const variant = variantRaw === 'v1.0' ? 'v1.0' : variantRaw === 'local' ? 'local' : 'v1.1'
+      const preferLocal = variant === 'local' && !enableThinking && providerMode !== 'research' && providerMode !== 'academic' && await localModelStatus()
       if (preferLocal) {
         try {
-          const localResult = await callLocalNados({ message, files: chatFiles, history: contextHistory, instructions: instructionsForModel, model: selectedModel.model, temperature: Number.isFinite(userTemperature) ? userTemperature : undefined })
-          sendEvent(response, { type: 'meta', provider: 'nados', model: 'Nados v1.1', variant: 'v1.1' })
+          // CPU-hosted Nados can take a while; cap it and fall back to the fast
+          // teachers so a slow artifact never stalls the user.
+          const localTimeoutMs = Number(process.env.NADOS_LOCAL_TIMEOUT_MS) || 20_000
+          const localResult = await Promise.race([
+            callLocalNados({ message, files: chatFiles, history: contextHistory, instructions: instructionsForModel.slice(0, 700), model: selectedModel.model, temperature: Number.isFinite(userTemperature) ? userTemperature : undefined }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('NADOS_LOCAL_LLM_OFFLINE: تجاوز النموذج المدرَّب مهلة الرد')), localTimeoutMs)),
+          ])
+          sendEvent(response, { type: 'meta', provider: 'nados', model: 'Nados v1.1 (مدرَّب)', variant: 'local' })
           for (let index = 0; index < localResult.text.length; index += 72) sendEvent(response, { type: 'delta', delta: localResult.text.slice(index, index + 72) })
-          sendEvent(response, { type: 'done', reply: { ...splitAnswer(localResult.text), sources: [], provider: 'nados', model: 'Nados v1.1', variant: 'v1.1', demo: false, usage: localResult.usage } })
+          sendEvent(response, { type: 'done', reply: { ...splitAnswer(localResult.text), sources: [], provider: 'nados', model: 'Nados v1.1 (مدرَّب)', variant: 'local', demo: false, usage: localResult.usage } })
           saveConversation({ message, reply: localResult.text, mode: providerMode, provider: 'nados-local', sources: [] })
           return response.end()
         } catch (localFirstError) {
