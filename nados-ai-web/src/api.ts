@@ -74,6 +74,7 @@ export interface ApiCapabilities {
   configured: boolean
   provider: string
   model?: string
+  localModel?: boolean
   orchestration?: { name: string; mode: 'parallel-first-success' | 'sequential-failover'; activeProviders: number }
   providers?: Array<{ id: string; name: string; configured: boolean }>
   features: {

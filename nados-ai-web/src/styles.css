@@ -2259,3 +2259,9 @@ html { overscroll-behavior-y: none; }
 .about-badges { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 4px; }
 .about-badges span { font-size: 11px; padding: 3px 10px; border-radius: 999px; background: rgb(var(--mint-rgb) / 0.12); color: var(--mint-dark); border: 1px solid rgb(var(--mint-rgb) / 0.25); }
 .about-desc { margin: 12px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.8; max-width: 520px; }
+
+/* Trained-model availability dot */
+.mv-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(141,150,142,0.55); margin-inline-start: 2px; }
+.mv-dot.on { background: #2fbf71; box-shadow: 0 0 0 2px rgba(47,191,113,0.22); }
+.model-variant button.active .mv-dot { background: rgba(5,34,29,0.45); box-shadow: none; }
+.model-variant button.active .mv-dot.on { background: #0b3b28; }

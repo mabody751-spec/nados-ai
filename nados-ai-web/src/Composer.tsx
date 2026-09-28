@@ -66,6 +66,7 @@ interface ComposerProps {
   enableThinking?: boolean
   variant?: 'v1.1' | 'v1.0' | 'local'
   setVariant?: (value: 'v1.1' | 'v1.0' | 'local') => void
+  trainedModelAvailable?: boolean
   setEnableSearch?: (value: boolean) => void
   setEnableThinking?: (value: boolean) => void
 }
@@ -207,7 +208,7 @@ export function Composer(props: ComposerProps) {
           }} />
           <div className="model-variant" role="group" aria-label="إصدار نموذج Nados">
             <button type="button" className={props.variant === 'v1.1' || !props.variant ? 'active' : ''} onClick={() => props.setVariant?.('v1.1')} aria-pressed={props.variant === 'v1.1' || !props.variant} title="Nados v1.1 — النموذج الأساسي"><span className="mv-name">Nados</span> <b>1.1</b></button>
-            <button type="button" className={props.variant === 'local' ? 'active' : ''} onClick={() => props.setVariant?.('local')} aria-pressed={props.variant === 'local'} title="Nados v1.1 المدرَّب (CPU خارجي)"><span className="mv-name">مدرَّب</span> <b>1.1</b></button>
+            <button type="button" className={props.variant === 'local' ? 'active' : ''} onClick={() => props.setVariant?.('local')} aria-pressed={props.variant === 'local'} title={props.trainedModelAvailable ? 'Nados v1.1 المدرَّب — متصل الآن (CPU خارجي)' : 'Nados v1.1 المدرَّب — غير متصل حاليًا؛ سيُستخدم المحرّك الاحتياطي'}><span className="mv-name">مدرَّب</span> <b>1.1</b><i className={`mv-dot ${props.trainedModelAvailable ? 'on' : ''}`} aria-hidden="true" /></button>
             <button type="button" className={props.variant === 'v1.0' ? 'active' : ''} onClick={() => props.setVariant?.('v1.0')} aria-pressed={props.variant === 'v1.0'} title="Nados v1.0"><span className="mv-name">Nados</span> <b>1.0</b></button>
           </div>
           <div className="composer-toggles">

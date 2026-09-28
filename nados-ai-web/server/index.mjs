@@ -296,7 +296,8 @@ app.get('/api/health', async (request, response) => {
     configured: connected.length > 0,
     provider: 'nados',
     providers: local ? providers : [],
-    model: 'Nados v1.0',
+    model: 'Nados v1.1',
+    localModel: await localModelStatus(),
     providersStatus: local ? {
       initialized: providersHealth.filter(h => h.status === 'ready').map(h => ({
         id: h.id,
