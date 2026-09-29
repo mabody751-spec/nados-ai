@@ -67,6 +67,7 @@ interface ComposerProps {
   variant?: 'v1.1' | 'v1.0' | 'local'
   setVariant?: (value: 'v1.1' | 'v1.0' | 'local') => void
   trainedModelAvailable?: boolean
+  oursOnly?: boolean
   setEnableSearch?: (value: boolean) => void
   setEnableThinking?: (value: boolean) => void
 }
@@ -206,19 +207,27 @@ export function Composer(props: ComposerProps) {
             }
             event.target.value = ''
           }} />
-          <div className="model-variant" role="group" aria-label="إصدار نموذج Nados">
-            <button type="button" className={props.variant === 'v1.1' || !props.variant ? 'active' : ''} onClick={() => props.setVariant?.('v1.1')} aria-pressed={props.variant === 'v1.1' || !props.variant} title="Nados v1.1 — النموذج الأساسي"><span className="mv-name">Nados</span> <b>1.1</b></button>
-            <button type="button" className={props.variant === 'local' ? 'active' : ''} onClick={() => props.setVariant?.('local')} aria-pressed={props.variant === 'local'} title={props.trainedModelAvailable ? 'Nados v1.1 المدرَّب — متصل الآن (CPU خارجي)' : 'Nados v1.1 المدرَّب — غير متصل حاليًا؛ سيُستخدم المحرّك الاحتياطي'}><span className="mv-name">مدرَّب</span> <b>1.1</b><i className={`mv-dot ${props.trainedModelAvailable ? 'on' : ''}`} aria-hidden="true" /></button>
-            <button type="button" className={props.variant === 'v1.0' ? 'active' : ''} onClick={() => props.setVariant?.('v1.0')} aria-pressed={props.variant === 'v1.0'} title="Nados v1.0"><span className="mv-name">Nados</span> <b>1.0</b></button>
-          </div>
+          {props.oursOnly ? (
+            <div className="model-variant model-variant--single" title={props.trainedModelAvailable ? 'نموذجنا المدرَّب Nados v1.1 — متصل' : 'نموذجنا المدرَّب Nados v1.1 — غير متصل حالياً'} aria-label="نموذج Nados المدرَّب">
+              <span className="mv-static"><i className={`mv-dot ${props.trainedModelAvailable ? 'on' : ''}`} aria-hidden="true" /> نموذجنا المدرَّب · <b>Nados 1.1</b></span>
+            </div>
+          ) : (
+            <div className="model-variant" role="group" aria-label="إصدار نموذج Nados">
+              <button type="button" className={props.variant === 'v1.1' || !props.variant ? 'active' : ''} onClick={() => props.setVariant?.('v1.1')} aria-pressed={props.variant === 'v1.1' || !props.variant} title="Nados v1.1 — النموذج الأساسي"><span className="mv-name">Nados</span> <b>1.1</b></button>
+              <button type="button" className={props.variant === 'local' ? 'active' : ''} onClick={() => props.setVariant?.('local')} aria-pressed={props.variant === 'local'} title={props.trainedModelAvailable ? 'Nados v1.1 المدرَّب — متصل الآن (CPU خارجي)' : 'Nados v1.1 المدرَّب — غير متصل حاليًا؛ سيُستخدم المحرّك الاحتياطي'}><span className="mv-name">مدرَّب</span> <b>1.1</b><i className={`mv-dot ${props.trainedModelAvailable ? 'on' : ''}`} aria-hidden="true" /></button>
+              <button type="button" className={props.variant === 'v1.0' ? 'active' : ''} onClick={() => props.setVariant?.('v1.0')} aria-pressed={props.variant === 'v1.0'} title="Nados v1.0"><span className="mv-name">Nados</span> <b>1.0</b></button>
+            </div>
+          )}
           <div className="composer-toggles">
-            <button
-              className={`composer-toggle ${props.enableSearch ? 'active' : ''}`}
-              onClick={() => props.setEnableSearch?.(!props.enableSearch)}
-              aria-pressed={props.enableSearch}
-              aria-label="تفعيل البحث"
-              title="بحث (يتصل بالإنترنت)"
-            ><Globe2 size={15} /><span>بحث</span></button>
+            {!props.oursOnly && (
+              <button
+                className={`composer-toggle ${props.enableSearch ? 'active' : ''}`}
+                onClick={() => props.setEnableSearch?.(!props.enableSearch)}
+                aria-pressed={props.enableSearch}
+                aria-label="تفعيل البحث"
+                title="بحث (يتصل بالإنترنت)"
+              ><Globe2 size={15} /><span>بحث</span></button>
+            )}
             <button
               className={`composer-toggle ${props.enableThinking ? 'active' : ''}`}
               onClick={() => props.setEnableThinking?.(!props.enableThinking)}

@@ -15,9 +15,12 @@ let localModelCache = { at: 0, ok: false }
 export async function localModelStatus({ force = false } = {}) {
   const baseUrl = String(process.env.NADOS_LOCAL_LLM_URL || 'http://127.0.0.1:8080').trim().replace(/\/$/, '')
   const now = Date.now()
-  if (!force && now - localModelCache.at < 60_000) return localModelCache.ok
+  // Positive results cache longer; failures retry quickly so a briefly cold
+  // model does not keep the app reporting "offline" for a full minute.
+  const ttl = localModelCache.ok ? 60_000 : 15_000
+  if (!force && now - localModelCache.at < ttl) return localModelCache.ok
   try {
-    const health = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(2500) })
+    const health = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(4000) })
     localModelCache = { at: now, ok: health.ok }
   } catch {
     localModelCache = { at: now, ok: false }

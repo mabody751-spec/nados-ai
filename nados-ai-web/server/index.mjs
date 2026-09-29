@@ -297,6 +297,7 @@ app.get('/api/health', async (request, response) => {
     provider: 'nados',
     providers: local ? providers : [],
     model: 'Nados v1.1',
+    engine: String(process.env.NADOS_ENGINE || 'ours').toLowerCase() === 'hybrid' ? 'hybrid' : 'ours',
     localModel: await localModelStatus(),
     providersStatus: local ? {
       initialized: providersHealth.filter(h => h.status === 'ready').map(h => ({
@@ -931,7 +932,31 @@ app.post('/api/chat/stream', chatRateLimit, upload.array('files', 5), async (req
       return
     }
 
-if (selectedModel.providerId === 'nados') {
+    if (selectedModel.providerId === 'nados') {
+      // Nados engine policy: 'ours' (default) answers ONLY with the trained
+      // Nados v1.1 model — no external provider — so the product is honestly
+      // "our model". 'hybrid' restores the teacher pipeline as a fallback.
+      const oursOnly = String(process.env.NADOS_ENGINE || 'ours').toLowerCase() !== 'hybrid'
+      if (oursOnly) {
+        try {
+          const online = await localModelStatus()
+          if (!online) {
+            sendEvent(response, { type: 'error', message: 'نموذج Nados المدرَّب غير متصل حالياً. شغّل خدمة النموذج (Kaggle CPU) ثم أعد المحاولة — المحادثة تعمل بنموذجنا فقط دون أي مزوّد خارجي.' })
+            return response.end()
+          }
+          const oursInstructions = `${liveNow}\nأجب بالعربية الفصحى بإيجاز ودقة، وابدأ بالجواب مباشرة دون مقدمات. إن طُلب رقم أو اسم فأجب بالقيمة فقط.`
+          const localOnly = await callLocalNados({ message, files: chatFiles, history: contextHistory, instructions: oursInstructions, model: selectedModel.model, temperature: Number.isFinite(userTemperature) ? userTemperature : undefined })
+          sendEvent(response, { type: 'meta', provider: 'nados', model: 'Nados v1.1 (مدرَّب)', variant: 'ours' })
+          for (let index = 0; index < localOnly.text.length; index += 72) sendEvent(response, { type: 'delta', delta: localOnly.text.slice(index, index + 72) })
+          sendEvent(response, { type: 'done', reply: { ...splitAnswer(localOnly.text), sources: [], provider: 'nados', model: 'Nados v1.1 (مدرَّب)', variant: 'ours', memory: engine.stats, demo: false, usage: localOnly.usage } })
+          saveConversation({ message, reply: localOnly.text, mode: providerMode, provider: 'nados-trained', sources: [] })
+          return response.end()
+        } catch (error) {
+          sendEvent(response, { type: 'error', message: `تعذّر الحصول على إجابة من نموذج Nados المدرَّب: ${String(error?.message || error).slice(0, 160)}` })
+          return response.end()
+        }
+      }
+
       // Deep Research mode for research/academic
       if (providerMode === 'research' || providerMode === 'academic') {
         const deepResult = await callDeepResearch({ message: modelMessage, history: contextHistory, mode: providerMode, file: primaryFile, files: chatFiles, instructions: instructionsForModel, modelOverride: selectedModel.model })

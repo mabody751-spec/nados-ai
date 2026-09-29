@@ -2265,3 +2265,14 @@ html { overscroll-behavior-y: none; }
 .mv-dot.on { background: #2fbf71; box-shadow: 0 0 0 2px rgba(47,191,113,0.22); }
 .model-variant button.active .mv-dot { background: rgba(5,34,29,0.45); box-shadow: none; }
 .model-variant button.active .mv-dot.on { background: #0b3b28; }
+
+/* Single-model chip (ours-only mode) */
+.model-variant--single { padding: 2px 8px; }
+.mv-static { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--mint-dark); white-space: nowrap; }
+.mv-static b { font-family: ui-monospace, Consolas, monospace; font-weight: 700; }
+@media (max-width: 680px) { .mv-static { font-size: 10px; } }
+
+/* About: model features list */
+.about-features { margin: 10px 0 0; padding-inline-start: 18px; text-align: start; color: var(--muted); font-size: 12.5px; line-height: 1.9; }
+.about-features li { margin: 2px 0; }
+.about-features li::marker { color: var(--mint); }
