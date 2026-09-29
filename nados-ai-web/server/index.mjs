@@ -945,7 +945,20 @@ app.post('/api/chat/stream', chatRateLimit, upload.array('files', 5), async (req
             return response.end()
           }
           const oursInstructions = `${liveNow}\nأجب بالعربية الفصحى بإيجاز ودقة، وابدأ بالجواب مباشرة دون مقدمات. إن طُلب رقم أو اسم فأجب بالقيمة فقط.`
-          const localOnly = await callLocalNados({ message, files: chatFiles, history: contextHistory, instructions: oursInstructions, model: selectedModel.model, temperature: Number.isFinite(userTemperature) ? userTemperature : undefined })
+          // No provider fallback exists in "ours" mode, so retry once: the CPU
+          // host or tunnel can be momentarily busy and answer on the second try.
+          let localOnly = null
+          let lastError = null
+          for (let attempt = 0; attempt < 2 && !localOnly; attempt += 1) {
+            try {
+              localOnly = await callLocalNados({ message, files: chatFiles, history: contextHistory, instructions: oursInstructions, model: selectedModel.model, temperature: Number.isFinite(userTemperature) ? userTemperature : undefined })
+            } catch (error) {
+              lastError = error
+              if (!/NADOS_LOCAL_LLM_OFFLINE/.test(String(error?.message || ''))) throw error
+              await new Promise((resolve) => setTimeout(resolve, 1500))
+            }
+          }
+          if (!localOnly) throw lastError || new Error('النموذج غير متاح')
           sendEvent(response, { type: 'meta', provider: 'nados', model: 'Nados v1.1 (مدرَّب)', variant: 'ours' })
           for (let index = 0; index < localOnly.text.length; index += 72) sendEvent(response, { type: 'delta', delta: localOnly.text.slice(index, index + 72) })
           sendEvent(response, { type: 'done', reply: { ...splitAnswer(localOnly.text), sources: [], provider: 'nados', model: 'Nados v1.1 (مدرَّب)', variant: 'ours', memory: engine.stats, demo: false, usage: localOnly.usage } })
