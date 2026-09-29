@@ -367,7 +367,7 @@ app.get('/api/conversations', requireLocalOrigin, async (request, response) => {
 })
 
 app.get('/api/training/registry', requireLocalOrigin, (_request, response) => {
-  response.json({ providers: buildProviderRegistry(), trainingProvider: TRAINING_PROVIDER_STATE })
+  response.json({ providers: buildProviderRegistry(), trainingProvider: trainingProviderState() })
 })
 
 app.post('/api/training/generate', requireLocalOrigin, async (request, response) => {
@@ -520,18 +520,35 @@ app.post('/api/agent/run', requireLocalOrigin, async (request, response) => {
   }
 })
 
+// Kaggle's API can be slow or unreachable; cache the status briefly and cap the
+// call with a deadline so the Training Center never hangs.
+let kaggleStatusCache = { at: 0, payload: null }
 app.get('/api/training/kaggle/status', requireLocalOrigin, async (_request, response) => {
+  const now = Date.now()
+  if (kaggleStatusCache.payload && now - kaggleStatusCache.at < 60_000) return response.json(kaggleStatusCache.payload)
   const enabled = kaggleEnabled()
-  if (!enabled) return response.json({ enabled: false, state: 'WAITING_FOR_CREDENTIALS', reason: 'يلزم اسم المستخدم ومفتاح Kaggle API (kaggle.com → Settings → API).' })
+  if (!enabled) {
+    const payload = { enabled: false, state: 'WAITING_FOR_CREDENTIALS', reason: 'يلزم اسم المستخدم ومفتاح Kaggle API (kaggle.com → Settings → API).' }
+    kaggleStatusCache = { at: now, payload }
+    return response.json(payload)
+  }
   try {
-    const verification = await verifyKaggleCredentials()
-    if (!verification.ok) return response.json({ enabled: true, state: 'INVALID_CREDENTIALS', reason: verification.error })
-    const live = await kernelLiveState()
-    const stats = await getTrainingStats()
-    response.json({
+    const deadline = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('تجاوز الاتصال بـ Kaggle المهلة')), ms))
+    const verification = await Promise.race([verifyKaggleCredentials(), deadline(6_000)])
+    if (!verification.ok) {
+      const payload = { enabled: true, state: 'INVALID_CREDENTIALS', reason: verification.error }
+      kaggleStatusCache = { at: now, payload }
+      return response.json(payload)
+    }
+    const [live, stats] = await Promise.race([
+      Promise.all([kernelLiveState(), getTrainingStats()]),
+      deadline(8_000),
+    ])
+    const payload = {
       enabled: true,
       state: live.state,
       providerState: trainingProviderState(),
+      serving: { trainedModelOnline: await localModelStatus(), routing: 'variant=local' },
       model: { version: 'Nados v1.1', base: 'gemma-2-9b (QLoRA)', state: live.state, done: live.done },
       params: { trainable: live.paramsTrainable, total: live.paramsTotal, percent: live.paramsPercent },
       targetParams,
@@ -541,9 +558,22 @@ app.get('/api/training/kaggle/status', requireLocalOrigin, async (_request, resp
       scheduler: { enabled: schedulerEnabled, intervalMs: schedulerIntervalMs, runs: schedulerRuns, lastRunAt: schedulerLastRun },
       logTail: live.logTail,
       kernel: live,
-    })
+    }
+    kaggleStatusCache = { at: now, payload }
+    response.json(payload)
   } catch (error) {
-    response.status(502).json({ enabled: true, state: 'ERROR', reason: error.message || 'فشل الاتصال بـ Kaggle.' })
+    const payload = { enabled: true, state: 'UNREACHABLE', reason: error.message || 'فشل الاتصال بـ Kaggle.', cachedAt: new Date(now).toISOString() }
+    kaggleStatusCache = { at: now, payload }
+    response.json(payload)
+  }
+})
+
+app.post('/api/training/cycle', requireLocalOrigin, async (_request, response) => {
+  try {
+    await runSchedulerCycle()
+    response.json({ ok: true, scheduler: { runs: schedulerRuns, lastRunAt: schedulerLastRun }, progress: getTrainingProgress() })
+  } catch (error) {
+    response.status(500).json({ error: String(error?.message || error).slice(0, 200) })
   }
 })
 
@@ -575,8 +605,9 @@ app.get('/api/training/stats', requireLocalOrigin, async (_request, response) =>
   if (supabase?.outputsAccepted) seedTrainingProgress({ accepted: Number(supabase.outputsAccepted) || 0, examples: Number(supabase.examplesTotal) || 0 })
   response.json({
     supabase,
-    trainingProvider: TRAINING_PROVIDER_STATE,
+    trainingProvider: trainingProviderState(),
     providerState: trainingProviderState(),
+    serving: { trainedModelOnline: await localModelStatus(), routing: 'variant=local' },
     progress: getTrainingProgress(),
     targetParams,
     continuity: { twentyFourSeven: schedulerEnabled, note: 'يعمل باستمرار 24/7 ما دام خادم Nados قيد التشغيل.' },

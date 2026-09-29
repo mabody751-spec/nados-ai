@@ -200,17 +200,32 @@ export interface TrainingCenterData {
   scheduler: { enabled: boolean; intervalMs: number; lastRunAt: string | null; runs: number }
   targetParams?: number
   growth?: TrainingGrowth
+  serving?: { trainedModelOnline: boolean; routing: string }
   continuity?: { twentyFourSeven: boolean; note: string }
   usage: Record<string, { totalCalls: number; successCalls: number; failedCalls: number; errorRate: number; avgLatencyMs: number }> | null
   kaggle?: {
     state: string
     providerState?: string
+    serving?: { trainedModelOnline: boolean; routing: string }
+    reason?: string
+    cachedAt?: string
     model?: { version: string; base: string; state: string; done: boolean }
     params?: { trainable: number | null; total: number | null; percent: number | null }
     progress?: { stepsDone: number | null; stepsTotal: number; gpu: string | null }
     dataset?: { examples: number; outputs: number; accepted: number }
     targetParams?: number
     growth?: TrainingGrowth
+  }
+}
+
+export async function runTrainingCycle(): Promise<{ ok: boolean; runs?: number }> {
+  try {
+    const response = await fetch('/api/training/cycle', { method: 'POST', signal: AbortSignal.timeout(180_000) })
+    if (!response.ok) return { ok: false }
+    const body = await response.json() as { ok?: boolean; scheduler?: { runs?: number } }
+    return { ok: Boolean(body.ok), runs: body.scheduler?.runs }
+  } catch {
+    return { ok: false }
   }
 }
 
@@ -233,6 +248,7 @@ export async function getTrainingCenter(includeKaggle = false): Promise<Training
       scheduler: stats.scheduler || { enabled: false, intervalMs: 0, lastRunAt: null, runs: 0 },
       targetParams: stats.targetParams,
       growth: stats.progress,
+      serving: (stats as { serving?: TrainingCenterData['serving'] }).serving,
       continuity: stats.continuity,
       usage,
     }

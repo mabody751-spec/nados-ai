@@ -112,7 +112,7 @@ export function getTrainingProgress() {
     growthPerExample: GROWTH_PER_EXAMPLE,
     startedAt: state.startedAt,
     updatedAt: state.updatedAt,
-    history: state.history || [],
+    history: (state.history || []).slice(-60),
     roadmap: MILESTONES,
   }
 }

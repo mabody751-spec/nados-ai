@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrainCircuit, Check, Database, Gauge, Play, RefreshCw, ShieldAlert, X } from 'lucide-react'
-import { generateTrainingData, getTrainingCenter, type TrainingCenterData } from './api'
+import { generateTrainingData, getTrainingCenter, runTrainingCycle, type TrainingCenterData } from './api'
 
 const capabilityLabels: Record<string, string> = {
   coding: 'برمجة',
@@ -41,6 +41,15 @@ export function TrainingCenter() {
   const [result, setGeneratingResult] = useState<{ status: string; persisted: number; best: { teacher: string; qualityScore: number } | null; outputs: Array<{ teacher: string; ok: boolean; qualityScore: number | null; accepted: boolean; error: string | null }> } | null>(null)
   const [error, setError] = useState('')
   const [kaggleLoading, setKaggleLoading] = useState(true)
+  const [cycling, setCycling] = useState(false)
+
+  const startLearningCycle = async () => {
+    setCycling(true)
+    const result = await runTrainingCycle()
+    setCycling(false)
+    if (!result.ok) setError('تعذّر تشغيل دورة تعلّم — تأكد من تشغيل الخادم المحلي.')
+    else { setError(''); await refresh() }
+  }
 
   const refresh = async () => {
     setLoading(true)
@@ -90,6 +99,7 @@ export function TrainingCenter() {
         <div><h2>Nados Training Center</h2><p>محرك التعلم المستمر — كل المعلمين بالتوازي، تقييم جودة، وحفظ تلقائي.</p></div>
         <div className="training-hero-actions">
           <button className="icon-button" onClick={() => void refresh()} aria-label="تحديث" title="تحديث"><RefreshCw size={17} /></button>
+          <button className="training-run" onClick={() => void startLearningCycle()} disabled={cycling || loading} aria-label="دورة تعلّم" title="تشغيل دورة تعلّم الآن (محلي)">{cycling ? 'جارٍ التعلّم...' : <><BrainCircuit size={15} /> دورة تعلّم</>}</button>
           <button className="training-run" onClick={() => void runCycle()} disabled={generating || !data?.providers.length} aria-label="توليد الآن" title="توليد الآن">{generating ? 'جارٍ التوليد...' : <><Play size={15} /> توليد الآن</>}</button>
         </div>
       </div>
@@ -164,6 +174,20 @@ export function TrainingCenter() {
                       {data.kaggle.model.done ? 'Nados v1.1 — اكتمل التدريب ✓' : data.kaggle.model.state === 'running' ? 'Nados v1.1 — يتدرب الآن' : `Nados v1.1 — ${data.kaggle.model.state}`}
                     </strong>
                     <small>{data.kaggle.model.base}</small>
+                  </div>
+                )}
+                {!kaggleLoading && !data.kaggle?.model && (
+                  <div>
+                    <span>Kaggle</span>
+                    <strong className="pending">{data.kaggle?.reason || data.kaggle?.state || 'غير متاح'}</strong>
+                    <small>التدريب السحابي يحتاج اتصالاً بـKaggle؛ التعلّم المحلي مستمر أدناه</small>
+                  </div>
+                )}
+                {!kaggleLoading && (data.kaggle?.serving || data.serving) && (
+                  <div>
+                    <span>خدمة النموذج المدرَّب</span>
+                    <strong className={(data.kaggle?.serving || data.serving)?.trainedModelOnline ? 'accepted' : 'pending'}>{(data.kaggle?.serving || data.serving)?.trainedModelOnline ? 'متصل الآن ✓ (CPU خارجي)' : 'غير متصل — يعمل المحرّك الاحتياطي'}</strong>
+                    <small>يُستخدم عند اختيار «مدرَّب» في المحادثة</small>
                   </div>
                 )}
                 {!kaggleLoading && data.kaggle?.params?.trainable && (
